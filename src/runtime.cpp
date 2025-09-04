@@ -130,28 +130,28 @@ std::pair<bool, const Runtime::func_p> Runtime::get_idnt_func(const Runtime::Idn
   return std::make_pair(false, func_p());
 }
 
-Runtime::RtResult Runtime::run(Parser::Result_CRef pr_result) {
+Runtime::RtResult Runtime::run(const Compiler::CmplResult& cmpl_res) {
   using Operator = Parser::CalcStep::Operator;
 
   rt_result = RtResult::make_null();
 
   // add idnts in nidnt_table to mem
   // add builtins
-  mem.resize(pr_result.idnt_count, RtMemUnit());
-  for(auto& [idnt, idnt_id] : pr_result.nidnt_table) {
+  mem.resize(cmpl_res.idnt_count, RtMemUnit());
+  for(auto& [idnt, idnt_id] : cmpl_res.nidnt_table) {
     auto blfn_it = MathLangLib::builtin_fn.find(idnt);
     if(blfn_it != MathLangLib::builtin_fn.end()) {
       mem[idnt_id].set<func_t>(blfn_it->second);
     }
   }
-  for(auto& [idnt, idnt_id] : pr_result.nidnt_table) {
+  for(auto& [idnt, idnt_id] : cmpl_res.nidnt_table) {
     auto blct_it = MathLangLib::builtin_constant.find(idnt);
     if(blct_it != MathLangLib::builtin_constant.end()) {
       mem[idnt_id].set<number_t>(blct_it->second);
     }
   }
 
-  for(auto& in : pr_result.calc_list) {
+  for(auto& in : cmpl_res.calc_list) {
     if(in.oper < MathLangUtils::ALL_OPER_NAMES_LEN) {
       Debug::console << "Runtime: handling [" << MathLangUtils::ALL_OPER_NAMES[in.oper] << "] instruction\n";
     }

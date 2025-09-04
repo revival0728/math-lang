@@ -54,6 +54,8 @@
     "any": "cpp",
     "charconv": "cpp",
     "forward_list": "cpp",
-    "typeindex": "cpp"
+    "typeindex": "cpp",
+    "fstream": "cpp",
+    "iomanip": "cpp"
   }
 }

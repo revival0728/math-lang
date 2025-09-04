@@ -13,11 +13,11 @@ bool Tokenizer::tokenized() const {
   return !tokens.empty();
 }
 
-Tokenizer::Result_CRef Tokenizer::get_tokens() {
+Tokenizer::Result_Ref Tokenizer::get_tokens() {
   return tokens;
 }
 
-Tokenizer::Result_CRef Tokenizer::tokenize(const std::string& code) {
+Tokenizer::Result_Ref Tokenizer::tokenize(const std::string& code) {
   tokens.clear();
   std::string token;
   TokenType token_type;
@@ -106,7 +106,7 @@ Parser::Parser() {
   idnt_table = std::unordered_map<std::string, int>();
 }
 
-Parser::Result_CRef Parser::get_parse_result() {
+Parser::Result_Ref Parser::get_parse_result() {
   assert(calc_list.size() > 0 && "[math-lang Parser::get_parse_result()]: Error");
   pr_result = PrResult::make_result(this);
   return pr_result;
@@ -289,7 +289,7 @@ std::pair<bool, Parser::CalcStep::Idnt> Parser::sy_algo(
   return {true, ret};
 }
 
-std::pair<CmplStat, Parser::Result_CRef> Parser::parse(Tokenizer::Result_CRef tokens) {
+std::pair<CmplStat, Parser::Result_Ref> Parser::parse(const Tokenizer::Result_T& tokens) {
   using Idnt = Parser::CalcStep::Idnt;
   using Operator = Parser::CalcStep::Operator;
   using namespace MathLangUtils;
@@ -462,3 +462,19 @@ std::ostream& operator<<(std::ostream& os, const Parser& p) {
   return os;
 }
 #endif
+
+Compiler::Compiler() {}
+
+std::pair<CmplStat, const Compiler::CmplResult&> Compiler::compile(const std::string& sline) {
+  auto tokens = tokenizer.tokenize(sline);
+  Debug::console << tokenizer << '\n';
+  if(tokens.empty()) {
+    Debug::console << "User input length is 0, stop at tokenization\n";
+    auto cmpl_stat = CmplStat(CmplStat::Empty, "Empty line");
+    auto cmpl_res = CmplResult::make_result(nullptr);
+    return {cmpl_stat, cmpl_res};
+  }
+  auto ret = parser.parse(tokens);
+  Debug::console << parser << '\n';
+  return ret;
+}

@@ -69,7 +69,7 @@ class Runtime {
   
   public:
   Runtime();
-  RtResult run(Parser::Result_CRef);
+  RtResult run(const Compiler::CmplResult&);
 
   #ifdef DEBUG
     friend std::ostream& operator<<(std::ostream&, const Runtime&);

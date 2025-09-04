@@ -16,8 +16,6 @@ class Tokenizer {
   using Result_T = std::vector<Token_T>;
   using Token_Ref = Token_T&;
   using Result_Ref = Result_T&;
-  using Token_CRef = const Token_T&;
-  using Result_CRef = const Result_T&;
 
   protected:
   Result_T tokens;
@@ -26,8 +24,8 @@ class Tokenizer {
   public:
   Tokenizer();
   bool tokenized() const;
-  Result_CRef get_tokens();
-  Result_CRef tokenize(const std::string&);
+  Result_Ref get_tokens();
+  Result_Ref tokenize(const std::string&);
 
   #ifdef DEBUG
     friend std::ostream& operator<<(std::ostream&, const Tokenizer&);
@@ -38,6 +36,7 @@ struct CmplStat {
   enum Result {
     Ok = 0,
     Failed = 1,
+    Empty = 2,
     Blank = -1,
   } code;
   std::string msg;
@@ -96,6 +95,7 @@ class Parser {
     std::unordered_map<std::string, int> nidnt_table;
     static PrResult make_result(const Parser *pp) {
       PrResult ret;
+      if(!pp) return ret;
       ret.idnt_count = pp->aval_idnt_id;
       ret.calc_list = pp->calc_list;
       ret.nidnt_table = pp->nidnt_table;
@@ -104,7 +104,6 @@ class Parser {
   } pr_result;
   using Result_T = PrResult;
   using Result_Ref = Result_T&;
-  using Result_CRef = const Result_Ref;
 
   protected:
   std::unordered_map<std::string, int> hash_oper;
@@ -135,12 +134,25 @@ class Parser {
 
   public:
   Parser();
-  Result_CRef get_parse_result();
-  std::pair<CmplStat, Result_CRef> parse(Tokenizer::Result_CRef);
+  Result_Ref get_parse_result();
+  std::pair<CmplStat, Result_Ref> parse(const Tokenizer::Result_T&);
 
   #ifdef DEBUG
     friend std::ostream& operator<<(std::ostream&, const Parser&);
   #endif
+};
+
+class Compiler {
+  public:
+  using CmplResult = Parser::PrResult;
+
+  protected:
+  Tokenizer tokenizer;
+  Parser parser;
+
+  public:
+  Compiler();
+  std::pair<CmplStat, const CmplResult&> compile(const std::string&);
 };
 
 #endif

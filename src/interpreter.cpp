@@ -3,31 +3,6 @@
 
 Interpreter::Interpreter() {}
 
-std::pair<int, std::string> Interpreter::exec_line(const std::string& sline) {
-  using namespace MathLangUtils;
-
-  auto tokens = tokenizer.tokenize(sline);
-  Debug::console << tokenizer << '\n';
-  if(tokens.empty()) {
-    Debug::console << "User input length is 0, stop at tokenization\n";
-    return {0, ""};
-  }
-  auto [cmpl_res, pr_result] = parser.parse(tokens);
-  Debug::console << parser << '\n';
-  if(cmpl_res.code != CmplStat::Ok) {
-    return {1, cmpl_res.msg};
-  }
-  auto rt_result = runtime.run(pr_result);
-  Debug::console << runtime << '\n';
-  if(rt_result.code != Runtime::RtResult::Ok) {
-    return {
-      2, 
-      String::bs(RT_RESULT_CODE[rt_result.code], ": ", rt_result.msg)
-    };
-  }
-  return {0, rt_result.msg};
-}
-
 std::string Interpreter::get_input(std::istream& is, bool hide_prefix = false) {
   if(!hide_prefix) std::cout << input_prefix;
   std::string input;
@@ -38,6 +13,27 @@ std::string Interpreter::get_input(std::istream& is, bool hide_prefix = false) {
 
 template<class ...P> void Interpreter::println(const P... t) {
   std::cout << MathLangUtils::String::bs(t...) << '\n';
+}
+
+std::pair<int, std::string> Interpreter::exec_line(const std::string& sline) {
+  using namespace MathLangUtils;
+
+  auto [cmpl_stat, cmpl_res] = compiler.compile(sline);
+  if(cmpl_stat.code == CmplStat::Empty) {
+    return {0, ""};
+  }
+  if(cmpl_stat.code != CmplStat::Ok) {
+    return {1, cmpl_stat.msg};
+  }
+  auto rt_result = runtime.run(cmpl_res);
+  Debug::console << runtime << '\n';
+  if(rt_result.code != Runtime::RtResult::Ok) {
+    return {
+      2, 
+      String::bs(RT_RESULT_CODE[rt_result.code], ": ", rt_result.msg)
+    };
+  }
+  return {0, rt_result.msg};
 }
 
 void Interpreter::start_cli() {

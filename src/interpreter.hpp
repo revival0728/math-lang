@@ -15,8 +15,7 @@ class Interpreter {
   std::string inter_version = "0.1.0";
 
   protected:
-  Tokenizer tokenizer;
-  Parser parser;
+  Compiler compiler;
   Runtime runtime;
   std::string get_input(std::istream&, bool);
   template<class ...P> void println(const P...);
