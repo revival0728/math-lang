@@ -37,7 +37,7 @@ std::pair<int, std::string> Interpreter::exec_line(const std::string& sline) {
 }
 
 void Interpreter::start_cli() {
-  println(inter_name, " Version ", inter_version);
+  println(PROJ_INTER_NAME, " ", PROJ_VERSION, " [", CPP_CMPL_ID, " ", CPP_CMPL_VERSION "]");
   while(1) {
     std::string sline = get_input(std::cin);
     if(sline == "quit") return;

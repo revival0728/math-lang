@@ -3,16 +3,20 @@
 
 #include "compiler.hpp"
 #include "runtime.hpp"
+#include "config.hpp"
 #include <string>
 #include <utility>
 #include <iostream>
 #include <fstream>
 
+#define PROJ_INTER_NAME TO_STRING(PROJ_NAME)
+#define PROJ_VERSION TO_STRING(PROJ_VERSION_MAJOR.PROJ_VERSION_MINOR.PROJ_VERSION_PATCH)
+#define CPP_CMPL_ID TO_STRING(PROJ_CPP_CMPL_ID)
+#define CPP_CMPL_VERSION TO_STRING(PROJ_CPP_CMPL_VERSION)
+
 class Interpreter {
   private:
-  std::string input_prefix = ">> ";
-  std::string inter_name = "Math-Lang-Script Interpreter";
-  std::string inter_version = "0.1.0";
+  const char* input_prefix = ">> ";
 
   protected:
   Compiler compiler;

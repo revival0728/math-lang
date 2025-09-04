@@ -64,6 +64,8 @@ namespace MathLangUtils {
   }
 
   namespace String {
+    #define __TO_STRING(M) #M
+    #define TO_STRING(M) __TO_STRING(M)
     template<class T> inline std::string to_string(const T[]);
     template<class T> inline std::string to_string(const T&);
     template<> inline std::string to_string<std::string>(const std::string&);
