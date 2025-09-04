@@ -36,6 +36,9 @@ namespace MathLangLib {
   WRAP_CPP_BUILTIN_FN_1(round, _round)
   WRAP_CPP_BUILTIN_FN_2(pow, _pow)
   WRAP_CPP_BUILTIN_FN_1(exp, _exp)
+  WRAP_CPP_BUILTIN_FN_1(log10, _log10)
+  WRAP_CPP_BUILTIN_FN_1(log2, _log2)
+  WRAP_CPP_BUILTIN_FN_1(log, _log)
   WRAP_CPP_BUILTIN_FN_2(fmod, _fmod)
 
   const std::unordered_map<std::string, const number_t> builtin_constant = {
@@ -59,6 +62,9 @@ namespace MathLangLib {
     LIST_BUILTIN_FN("round", round),
     LIST_BUILTIN_FN("pow", pow),
     LIST_BUILTIN_FN("exp", exp),
+    LIST_BUILTIN_FN("log", log10),
+    LIST_BUILTIN_FN("lg", log2),
+    LIST_BUILTIN_FN("ln", log),
     LIST_BUILTIN_FN("mod", fmod),
   };
 }
