@@ -1,5 +1,6 @@
 #include <stack>
 #include <cassert>
+#include <cstdint>
 #include "compiler.hpp"
 #include "utils.hpp"
 #include "mathlib.hpp"
