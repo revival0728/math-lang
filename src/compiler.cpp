@@ -84,8 +84,8 @@ Tokenizer::Result_Ref Tokenizer::tokenize(const std::string& code) {
 std::ostream& operator<<(std::ostream& os, const Tokenizer& tokenizer) {
   os << "[Tokenizer]:\n";
   os << "tokens:\n";
-  for(auto& i : tokenizer.tokens) {
-    os << "[" << i << "],\n";
+  for(int i = 0; i < tokenizer.tokens.size(); ++i) {
+    os << i << ": [" << tokenizer.tokens[i] << "],\n";
   }
   os << "[END Tokenizer]";
   return os;
@@ -123,7 +123,7 @@ int Parser::get_idnt_id(const std::string& idnt) {
     return nidnt_table[idnt] = new_idnt_id();
   }
   if(id != idnt_table.end()) return id->second;
-  assert(id != idnt_table.end() && nid != nidnt_table.end());
+  assert((id != idnt_table.end()) ^ (nid != nidnt_table.end()));
   if(nid != nidnt_table.end()) return nid->second;
   return -1;  // should never be -1
 }
@@ -263,7 +263,7 @@ std::pair<bool, Parser::CalcStep::Idnt> Parser::sy_algo(
       POP_TMP_TO_ORIGIN_DEQ();
       continue;
     }
-    if(!in_func && !opers.empty() && !idnts.empty() && OPER_RANK[top_oper] < OPER_RANK[opers.back()]) {
+    if(!in_func && !opers.empty() && !idnts.empty() && OPER_RANK[top_oper] <= OPER_RANK[opers.back()]) {
       ADD_DIV_TO_TMP_DEQ();
       tmp_opers.push_back(top_oper);
       // if top_idnt(ti) is PreValue, it will be covered by newest operation.
@@ -392,7 +392,7 @@ std::pair<CmplStat, Parser::Result_Ref> Parser::parse(const Tokenizer::Result_T&
       }
       // Assume it is a Idnt::Var
       idnts.push_back(Idnt::make_var(get_idnt_id(*tk)));
-      expect_bits = 0b111110010;
+      expect_bits = 0b111110110;
       break;
     }
   }

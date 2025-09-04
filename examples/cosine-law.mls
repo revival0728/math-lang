@@ -4,3 +4,5 @@ c = 7
 
 cosRad = (pow(a, 2) + pow(b, 2) - pow(c, 2)) / (2 * a * b)
 deg = acos(cosRad) / pi * 180
+
+deg

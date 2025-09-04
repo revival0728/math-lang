@@ -9,7 +9,7 @@
       "type": "cppdbg",
       "request": "launch",
       "program": "${workspaceFolder}/build/math-lang",
-      "args": [],
+      "args": ["${workspaceFolder}/examples/cosine-law.mls"],
       "stopAtEntry": false,
       "cwd": "${fileDirname}",
       "environment": [],

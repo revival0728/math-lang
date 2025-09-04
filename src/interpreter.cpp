@@ -56,10 +56,11 @@ void Interpreter::exec_file(const std::string fn) {
   while(!file.eof()) {
     std::string sline = get_input(file, true);
     auto [ok, output] = exec_line(sline);
-      if(!output.empty() && !ok) {
+      if(!output.empty()) {
         if(ok == 1) println("Compile Error at line ", ln, ":");
         if(ok == 2) println("Runtime Error at line ", ln, ":");
         println(output);
+        if(ok > 0) return;
     }
     ++ln;
   }

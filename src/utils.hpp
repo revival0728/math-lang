@@ -40,7 +40,7 @@ namespace MathLangUtils {
   };
   const std::string ALL_OPER[] = {"=","+","*","-","/","(",")",","};
   const std::string ALL_OPER_NAMES[] = {"set", "plus", "multiply", "minus", "divide", "lparen", "rparen", "argsplit", "func", "print", "null"};
-  const int OPER_RANK[]              = {0    , 2     , 3         , 2      , 3       , 4       , 4       , 1         , 4  };
+  const int OPER_RANK[]              = {0    , 2     , 3         , 2      , 3       , 5       , 5       , 1         , 4  };
   const std::size_t ALL_OPER_LEN = sizeof(ALL_OPER) / sizeof(std::string);
   const std::size_t OPER_RANK_LEN = sizeof(OPER_RANK) / sizeof(int);
   const std::size_t ALL_OPER_NAMES_LEN = sizeof(ALL_OPER_NAMES) / sizeof(std::string);
