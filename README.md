@@ -4,13 +4,12 @@ Toy scripting language to calculate math
 
 ## How to Play
 
-1. get binary from source
+1. build from source
 
-#### For `macOS` and `linux`
-make sure you have installed `git`, `make`, and `g++`
+make sure you have installed `git`, `cmake`, any C++ build system (`make` by default), and any C++ compiler (`g++`, `clang++`)
 ```bash
 git clone https://github.com/revival0728/math-lang.git
-cd math-lang && make
+cd math-lang/build && cmake ../src && cmake --build .
 ```
 
 2. run the binary
