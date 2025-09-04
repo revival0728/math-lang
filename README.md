@@ -30,13 +30,16 @@ math-lang
 ```
 rnum = [raw-number] | [scientific-notation] | [[rnum]^[rnum]]
 idnt = [user-defined-variable] | [builtin-constants] | [rnum]
-oper = [+][-][*][/][=]
+oper = [+][-][*][/]
 expr = [idnt] |
        [fun-call] |
        ([expr]) |
+       [idnt][=][expr] |
        [expr][oper][expr] |
 fun-call = [fun-name]([[expr] | [expr], ...])
 ```
+The scripts execute based on `expr`.
+
 You can checkout MLS scripts exmaples in the [`examples/`](/examples/) folder.
 
 ## Builtins
