@@ -55,7 +55,7 @@ jobs:
       shell: bash
       working-directory: ${{ github.workspace }}
       run: |
-        echo "build-output-dir-win=${{ github.workspace }}\\build" >> "$GITHUB_OUTPUT"
+        echo "build-output-dir-win=${{ github.workspace }}/build" >> "$GITHUB_OUTPUT"
         echo "build-output-dir=$(pwd)/build" >> "$GITHUB_OUTPUT"
         if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
           echo "math-lang-bin=math-lang-windows-${{ matrix.c_compiler }}-x86_64.exe" >> "$GITHUB_OUTPUT"
