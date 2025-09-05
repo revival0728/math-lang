@@ -84,13 +84,12 @@ jobs:
       run: ctest --build-config ${{ matrix.build_type }}
     
     - name: Rename binary and get hash
-      id: rename
       working-directory: ${{ steps.strings.outputs.build-output-dir }}
       shell: bash
       run: |
         ls -lh
         if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
-          mv math-lang.exe ${{ steps.strings.outputs.math-lang-bin }}
+          mv Release/math-lang.exe ${{ steps.strings.outputs.math-lang-bin }}
           sha256sum ${{ steps.strings.outputs.math-lang-bin }} > ${{ steps.strings.outputs.math-lang-bin }}-sha256.txt
         else
           mv math-lang ${{ steps.strings.outputs.math-lang-bin }}
