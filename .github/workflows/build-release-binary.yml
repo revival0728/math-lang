@@ -90,9 +90,10 @@ jobs:
           mv ${{ steps.strings.outputs.build-output-dir }}/math-lang ${{ steps.strings.outputs.build-output-dir }}/${{ steps.strings.outputs.math-lang-bin }}
           sha256sum ${{ steps.strings.outputs.build-output-dir }}/${{ steps.strings.outputs.math-lang-bin }} > ${{ steps.strings.outputs.build-output-dir }}/${{ steps.strings.outputs.math-lang-bin }}-sha256.txt
         fi
+        ls -lh ${{ steps.strings.outputs.build-output-dir }}
     
     - name: Draft release binary
-      uses: softprops/action-gh-release@v2.3.2
+      uses: softprops/action-gh-release@v2
       with:
         files: |
           ${{ steps.strings.outputs.build-output-dir }}/${{ steps.strings.outputs.math-lang-bin }}
