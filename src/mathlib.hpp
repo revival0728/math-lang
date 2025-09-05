@@ -14,6 +14,14 @@ namespace MathLangLib {
   using func_t = MathLangUtils::func_t;
   using args_t = MathLangUtils::args_t;
 
+
+  #define MC_PI 3.14159265358979323846264338327950288
+  #define MC_E  2.71828182845904523536028747135266250
+  const std::unordered_map<std::string, const number_t> builtin_constant = {
+    {"pi", MC_PI},
+    {"e",  MC_E},
+  };
+
   #define WRAP_CPP_BUILTIN_FN_1(FN_NAME, _FN_NAME) \
     static number_t _FN_NAME(number_t v1) { return std::FN_NAME(v1); } \
     static number_t FN_NAME(args_t& args) { return MathLangUtils::Function::call_func(_FN_NAME, args); }
@@ -41,10 +49,6 @@ namespace MathLangLib {
   WRAP_CPP_BUILTIN_FN_1(log, _log)
   WRAP_CPP_BUILTIN_FN_2(fmod, _fmod)
 
-  const std::unordered_map<std::string, const number_t> builtin_constant = {
-    {"pi", M_PI},
-    {"e",  M_E},
-  };
   #define LIST_BUILTIN_FN(NAME, CPP_NAME) {NAME, MathLangLib::CPP_NAME}
   const std::unordered_map<std::string, const func_t> builtin_fn = {
     LIST_BUILTIN_FN("cos", cos),

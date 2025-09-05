@@ -4,7 +4,7 @@ Toy scripting language to calculate math
 
 ## How to Play
 
-1. build from source
+1. build binary from source
 
 make sure you have installed `git`, `cmake`, any C++ build system (`make` by default), and any C++ compiler (`g++`, `clang++`)
 ```bash
@@ -45,10 +45,10 @@ You can checkout MLS scripts exmaples in the [`examples/`](/examples/) folder.
 
 ### Constants
 
-| name | document |
+| name | value |
 |------|----------|
-| pi   | `CPP` macro `M_PI` |
-| e    | `CPP` macro `M_E` |
+| pi   | 3.14159265358979323846264338327950288 |
+| e    | 2.71828182845904523536028747135266250 |
 
 ## Functions
 
