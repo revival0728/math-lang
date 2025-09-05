@@ -53,8 +53,9 @@ jobs:
       # Turn repeated input strings (such as the build output directory) into step outputs. These step outputs can be used throughout the workflow file.
       id: strings
       shell: bash
+      working-directory: ${{ github.workspace }}
       run: |
-        echo "build-output-dir=~/build" >> "$GITHUB_OUTPUT"
+        echo "build-output-dir=$(pwd)/build" >> "$GITHUB_OUTPUT"
         if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
           echo "math-lang-bin=math-lang-windows-${{ matrix.c_compiler }}-x86_64.exe" >> "$GITHUB_OUTPUT"
         else
@@ -84,17 +85,18 @@ jobs:
     
     - name: Rename binary and get hash
       id: rename
+      working-directory: ${{ steps.strings.outputs.build-output-dir }}
       shell: bash
       run: |
-        ls -lh ${{ steps.strings.outputs.build-output-dir }}
+        ls -lh
         if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
-          mv ${{ steps.strings.outputs.build-output-dir }}/math-lang.exe ${{ steps.strings.outputs.build-output-dir }}/${{ steps.strings.outputs.math-lang-bin }}
-          sha256sum ${{ steps.strings.outputs.build-output-dir }}/${{ steps.strings.outputs.math-lang-bin }} > ${{ steps.strings.outputs.build-output-dir }}/${{ steps.strings.outputs.math-lang-bin }}-sha256.txt
+          mv math-lang.exe ${{ steps.strings.outputs.math-lang-bin }}
+          sha256sum ${{ steps.strings.outputs.math-lang-bin }} > ${{ steps.strings.outputs.math-lang-bin }}-sha256.txt
         else
-          mv ${{ steps.strings.outputs.build-output-dir }}/math-lang ${{ steps.strings.outputs.build-output-dir }}/${{ steps.strings.outputs.math-lang-bin }}
-          sha256sum ${{ steps.strings.outputs.build-output-dir }}/${{ steps.strings.outputs.math-lang-bin }} > ${{ steps.strings.outputs.build-output-dir }}/${{ steps.strings.outputs.math-lang-bin }}-sha256.txt
+          mv math-lang ${{ steps.strings.outputs.math-lang-bin }}
+          sha256sum ${{ steps.strings.outputs.math-lang-bin }} > ${{ steps.strings.outputs.math-lang-bin }}-sha256.txt
         fi
-        ls -lh ${{ steps.strings.outputs.build-output-dir }}
+        ls -lh
     
     - name: Draft release binary
       uses: softprops/action-gh-release@v2
