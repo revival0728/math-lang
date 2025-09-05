@@ -54,10 +54,11 @@ jobs:
       id: strings
       shell: bash
       run: |
-        echo "build-output-dir=${{ github.workspace }}/build" >> "$GITHUB_OUTPUT"
         if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+          echo "build-output-dir=${{ github.workspace }}\build" >> "$GITHUB_OUTPUT"
           echo "math-lang-bin=math-lang-windows-${{ matrix.c_compiler }}-x86_64.exe" >> "$GITHUB_OUTPUT"
         else
+          echo "build-output-dir=${{ github.workspace }}/build" >> "$GITHUB_OUTPUT"
           echo "math-lang-bin=math-lang-linux-${{ matrix.c_compiler }}-x86_64" >> "$GITHUB_OUTPUT"
         fi
 
@@ -88,8 +89,8 @@ jobs:
       run: |
         ls -lh ${{ steps.strings.outputs.build-output-dir }}
         if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
-          mv ${{ steps.strings.outputs.build-output-dir }}/math-lang.exe ${{ steps.strings.outputs.build-output-dir }}/${{ steps.strings.outputs.math-lang-bin }}
-          sha256sum ${{ steps.strings.outputs.build-output-dir }}/${{ steps.strings.outputs.math-lang-bin }} > ${{ steps.strings.outputs.build-output-dir }}/${{ steps.strings.outputs.math-lang-bin }}-sha256.txt
+          mv ${{ steps.strings.outputs.build-output-dir }}\math-lang.exe ${{ steps.strings.outputs.build-output-dir }}\${{ steps.strings.outputs.math-lang-bin }}
+          sha256sum ${{ steps.strings.outputs.build-output-dir }}\${{ steps.strings.outputs.math-lang-bin }} > ${{ steps.strings.outputs.build-output-dir }}\${{ steps.strings.outputs.math-lang-bin }}-sha256.txt
         else
           mv ${{ steps.strings.outputs.build-output-dir }}/math-lang ${{ steps.strings.outputs.build-output-dir }}/${{ steps.strings.outputs.math-lang-bin }}
           sha256sum ${{ steps.strings.outputs.build-output-dir }}/${{ steps.strings.outputs.math-lang-bin }} > ${{ steps.strings.outputs.build-output-dir }}/${{ steps.strings.outputs.math-lang-bin }}-sha256.txt
