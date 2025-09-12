@@ -56,7 +56,7 @@ You can checkout MLS script exmaples in the [`examples/`](/examples/) folder.
 | pi   | 3.14159265358979323846264338327950288 |
 | e    | 2.71828182845904523536028747135266250 |
 
-## Functions
+### Functions
 
 | name | document |
 |------|----------|
@@ -81,3 +81,6 @@ You can checkout MLS script exmaples in the [`examples/`](/examples/) folder.
 | mod(a, b) | `CPP` `<cmath>` function (`fmod` which computes remainder of division) |
 
 You can checkout [`mathlib.hpp`](/src/mathlib.hpp) for more specific information.
+
+## TODO
+- [ ] optimize temporary memory usage
