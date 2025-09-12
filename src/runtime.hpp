@@ -6,17 +6,16 @@
 #include <utility>
 #include <any>
 #include <iostream>
-#include <type_traits>
 #include "compiler.hpp"
 #include "utils.hpp"
 
 class RtMemUnit {
   public:
   using Idnt = Parser::CalcStep::Idnt;
-  using number_t = MathLangUtils::number_t;
-  using number_p = MathLangUtils::number_p;
-  using func_t = MathLangUtils::func_t;
-  using func_p = MathLangUtils::func_p;
+  using number_t = MathLangUtils::DT::number_t;
+  using number_p = MathLangUtils::DT::number_p;
+  using func_t = MathLangUtils::DT::func_t;
+  using func_p = MathLangUtils::DT::func_p;
 
   protected:
   std::shared_ptr<std::any> mem;
@@ -34,10 +33,10 @@ class RtMemUnit {
 class Runtime {
   private:
   using Idnt = Parser::CalcStep::Idnt;
-  using number_t = MathLangUtils::number_t;
-  using number_p = MathLangUtils::number_p;
-  using func_t = MathLangUtils::func_t;
-  using func_p = MathLangUtils::func_p;
+  using number_t = MathLangUtils::DT::number_t;
+  using number_p = MathLangUtils::DT::number_p;
+  using func_t = MathLangUtils::DT::func_t;
+  using func_p = MathLangUtils::DT::func_p;
 
   public:
   struct RtResult {

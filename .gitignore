@@ -1,2 +1,5 @@
 # Cpp build files
 build/
+
+# Clangd
+.cache/

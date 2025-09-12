@@ -7,8 +7,8 @@ int main(int argc, const char **argv) {
     #ifndef DEBUG
       interpreter.start_cli();
     #else
-      interpreter.start_cli();
-      // interpreter.exec_line("a = ((1 * 2 + 3) * 4) + 5 * 6 + 7");
+      // interpreter.start_cli();
+      interpreter.exec_line("a = ((1 * 2 + 3) * 4) + 5 * 6 + 7");
       // interpreter.exec_line("a = (1 + 2 + cos(0) - 1) / 2");
       // interpreter.exec_line("2^9");
       // interpreter.exec_line("+");

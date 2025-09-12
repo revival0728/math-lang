@@ -1,9 +1,8 @@
-#include <stack>
 #include <cassert>
-#include <cstdint>
 #include "compiler.hpp"
 #include "utils.hpp"
-#include "mathlib.hpp"
+
+using namespace MathLangUtils;
 
 // Tokenizer
 Tokenizer::Tokenizer() {
@@ -99,8 +98,8 @@ Parser::Parser() {
   calc_list = std::vector<CalcStep>();
   cmpl_res = CmplStat(CmplStat::Blank, "");
   hash_oper = std::unordered_map<std::string, int>();
-  for(auto& oper : MathLangUtils::ALL_OPER) {
-    hash_oper[oper] = MathLangUtils::hash(oper);
+  for(auto& oper : Grammer::ALL_OPER) {
+    hash_oper[oper] = Hash::hash(oper);
   }
   aval_idnt_id = 0;
   nidnt_table = std::unordered_map<std::string, int>();
@@ -147,7 +146,6 @@ std::pair<bool, Parser::CalcStep::Idnt> Parser::sy_algo(
   std::deque<Parser::CalcStep::Operator>& opers) {
   using Idnt = Parser::CalcStep::Idnt;
   using Operator = Parser::CalcStep::Operator;
-  using namespace MathLangUtils;
 
   Debug::console << "sy_algo()\n";
   int in_func = 0;
@@ -264,7 +262,7 @@ std::pair<bool, Parser::CalcStep::Idnt> Parser::sy_algo(
       POP_TMP_TO_ORIGIN_DEQ();
       continue;
     }
-    if(!in_func && !opers.empty() && !idnts.empty() && OPER_RANK[top_oper] <= OPER_RANK[opers.back()]) {
+    if(!in_func && !opers.empty() && !idnts.empty() && Grammer::OPER_RANK[top_oper] <= Grammer::OPER_RANK[opers.back()]) {
       ADD_DIV_TO_TMP_DEQ();
       tmp_opers.push_back(top_oper);
       // if top_idnt(ti) is PreValue, it will be covered by newest operation.
@@ -329,19 +327,19 @@ std::pair<CmplStat, Parser::Result_Ref> Parser::parse(const Tokenizer::Result_T&
   // every bit represents expected operator or idnt
   // the order of bit equals to the reverse order of ALL_OPER
   // the last bit of it represents idnt
-  std::uint16_t expect_bits = 0b000001101;
+  DT::syexpt_t expect_bits = 0b000001101;
   assert((expect_bits | ((1 << 10) - 1)) == (1 << 10) - 1);
 
   #define IS_INVALID_TOKEN(rb) (((expect_bits | rb) ^ expect_bits) != 0)
   #define TOKENS_TO_OPERATOR_MAPPING(tkr, oper, rb, eb) \
-    case hash_cxpr(tkr): {\
+  case Hash::hash_cxpr(tkr): {\
       if(IS_INVALID_TOKEN(rb)) { \
         Debug::console << "Invalid syntax detected!\n"; \
         std::string expt; \
         if(expect_bits & 1) expt.append("identifier "); \
         for(int i = 1; i < 9; ++i) { \
           if(expect_bits & (1 << i)) { \
-            expt.append(ALL_OPER[ALL_OPER_LEN - i]); \
+            expt.append(Grammer::ALL_OPER[Grammer::ALL_OPER_LEN - i]); \
             expt.push_back(' '); \
           } \
         } \
@@ -355,7 +353,7 @@ std::pair<CmplStat, Parser::Result_Ref> Parser::parse(const Tokenizer::Result_T&
     }
 
   for(auto tk = tokens.begin(); tk != tokens.end(); ++tk) {
-    switch (hash(*tk)) {
+    switch (Hash::hash(*tk)) {
     TOKENS_TO_OPERATOR_MAPPING("=", Operator::set,      0b100000000, 0b000001001)
     TOKENS_TO_OPERATOR_MAPPING("+", Operator::plus,     0b010000000, 0b000001001)
     TOKENS_TO_OPERATOR_MAPPING("*", Operator::multiply, 0b001000000, 0b000001001)
@@ -368,10 +366,10 @@ std::pair<CmplStat, Parser::Result_Ref> Parser::parse(const Tokenizer::Result_T&
       if(IS_INVALID_TOKEN(0b000000001)) {
         Debug::console << "Invalid syntax detected!\n";
         std::string expt;
-        if(expect_bits & 1) expt.append("identifier "); \
+        if(expect_bits & 1) expt.append("identifier ");
         for(int i = 1; i < 9; ++i) {
           if(expect_bits & (1 << i)) {
-            expt.append(ALL_OPER[ALL_OPER_LEN - i]);
+            expt.append(Grammer::ALL_OPER[Grammer::ALL_OPER_LEN - i]);
             expt.push_back(' ');
           }
         }
@@ -379,8 +377,8 @@ std::pair<CmplStat, Parser::Result_Ref> Parser::parse(const Tokenizer::Result_T&
         cmpl_res = CmplStat(CmplStat::Failed, "Syntax Error: expected { ", expt, "} at token position ", position, " found an identifier");
         return {cmpl_res, pr_result};
       }
-      if(is_str_number(*tk)) {
-        idnts.push_back(Idnt::make_raw(MathLangUtils::str_to_number(*tk)));
+      if(String::is_str_number(*tk)) {
+        idnts.push_back(Idnt::make_raw(String::str_to_number(*tk)));
         expect_bits = 0b011110110;
         break;
       }
@@ -428,7 +426,7 @@ std::ostream& operator<<(std::ostream& os, const Parser& p) {
     os << k << ": " << v << '\n';
   os << "calc_list:\n";
   for(auto& i : p.calc_list) {
-    os << MathLangUtils::ALL_OPER_NAMES[i.oper] << " [" ;
+    os << Grammer::ALL_OPER_NAMES[i.oper] << " [" ;
     for(auto& j : i.idnts) {
       switch(j.idnt_type) {
       case Idnt::Raw:

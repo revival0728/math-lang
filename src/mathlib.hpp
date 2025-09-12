@@ -2,18 +2,10 @@
 #define MATHLIB_HPP
 
 #include "utils.hpp"
-#include <vector>
-#include <map>
-
-#define _USE_MATH_DEFINES
 #include <cmath>
 
 namespace MathLangLib {
-  using number_t = MathLangUtils::number_t;
-  using func_p = MathLangUtils::func_p;
-  using func_t = MathLangUtils::func_t;
-  using args_t = MathLangUtils::args_t;
-
+  using namespace MathLangUtils::DT;
 
   #define MC_PI 3.14159265358979323846264338327950288
   #define MC_E  2.71828182845904523536028747135266250

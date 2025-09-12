@@ -1,5 +1,8 @@
 #include "interpreter.hpp"
 #include "utils.hpp"
+#include <fstream>
+
+using namespace MathLangUtils;
 
 Interpreter::Interpreter() {}
 
@@ -16,8 +19,6 @@ template<class ...P> void Interpreter::println(const P... t) {
 }
 
 std::pair<int, std::string> Interpreter::exec_line(const std::string& sline) {
-  using namespace MathLangUtils;
-
   auto [cmpl_stat, cmpl_res] = compiler.compile(sline);
   if(cmpl_stat.code == CmplStat::Empty) {
     return {0, ""};
@@ -30,7 +31,7 @@ std::pair<int, std::string> Interpreter::exec_line(const std::string& sline) {
   if(rt_result.code != Runtime::RtResult::Ok) {
     return {
       2, 
-      String::bs(RT_RESULT_CODE[rt_result.code], ": ", rt_result.msg)
+      String::bs(CLI::RT_RESULT_CODE[rt_result.code], ": ", rt_result.msg)
     };
   }
   return {0, rt_result.msg};

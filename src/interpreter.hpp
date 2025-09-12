@@ -7,7 +7,6 @@
 #include <string>
 #include <utility>
 #include <iostream>
-#include <fstream>
 
 #define PROJ_INTER_NAME TO_STRING(PROJ_NAME)
 #define PROJ_VERSION TO_STRING(PROJ_VERSION_MAJOR.PROJ_VERSION_MINOR.PROJ_VERSION_PATCH)

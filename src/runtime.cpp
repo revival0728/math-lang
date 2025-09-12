@@ -1,7 +1,8 @@
 #include "runtime.hpp"
 #include "mathlib.hpp"
-#include <typeindex>
 #include <typeinfo>
+
+using namespace MathLangUtils;
 
 RtMemUnit::RtMemUnit() { 
   mem = std::shared_ptr<std::any>();
@@ -40,7 +41,7 @@ std::ostream& operator<<(std::ostream& os, const RtMemUnit& rtm) {
     return os << "Var->" << *(rtm.get<number_t>().second);
   }
   if(rtm.mem->type() == typeid(func_t)) {
-    return os << "Func->" << (rtm.get<func_t>().second)->target<MathLangUtils::raw_func_p>();
+    return os << "Func->" << (rtm.get<func_t>().second)->target<DT::raw_func_p>();
   }
   return os;
 }
@@ -152,8 +153,8 @@ Runtime::RtResult Runtime::run(const Compiler::CmplResult& cmpl_res) {
   }
 
   for(auto& in : cmpl_res.calc_list) {
-    if(in.oper < MathLangUtils::ALL_OPER_NAMES_LEN) {
-      Debug::console << "Runtime: handling [" << MathLangUtils::ALL_OPER_NAMES[in.oper] << "] instruction\n";
+    if(in.oper < Grammer::ALL_OPER_NAMES_LEN) {
+      Debug::console << "Runtime: handling [" << Grammer::ALL_OPER_NAMES[in.oper] << "] instruction\n";
     }
     switch(in.oper) {
     case Operator::set: {
@@ -185,7 +186,7 @@ Runtime::RtResult Runtime::run(const Compiler::CmplResult& cmpl_res) {
       Idnt func = in.idnts.back();
       auto fp = get_idnt_func(func);
       if(!fp.first) return rt_result;
-      MathLangUtils::args_t args;
+      DT::args_t args;
       for(auto it = std::next(in.idnts.crbegin()), end = in.idnts.crend(); it != end; ++it) {
         auto pp = get_idnt_value(*it);
         if(!pp.first) {
@@ -225,7 +226,7 @@ std::ostream& operator<<(std::ostream& os, const Runtime& rt) {
 
   os << "[Runtime]:\n";
   os << "rt_result:\n";
-  os << MathLangUtils::RT_RESULT_CODE[rt.rt_result.code] << ": " << rt.rt_result.msg << '\n';
+  os << CLI::RT_RESULT_CODE[rt.rt_result.code] << ": " << rt.rt_result.msg << '\n';
   os << "pre_value: ";
   switch(rt.pre_value.idnt_type) {
   case Idnt::Raw:

@@ -3,7 +3,6 @@
 
 #include <string>
 #include <vector>
-#include <map>
 #include <iostream>
 #include <utility>
 #include <deque>
@@ -71,13 +70,13 @@ class Parser {
     struct Idnt {
       enum Type { Raw, Var, Func, PreValue, None } idnt_type;
       int idnt_id;
-      MathLangUtils::number_t raw_value;
+      MathLangUtils::DT::number_t raw_value;
       Idnt() : idnt_type(None), idnt_id(-1), raw_value(0) {}
-      Idnt(Type _idnt_type, int _idnt_id, MathLangUtils::number_t _raw_value) : 
+      Idnt(Type _idnt_type, int _idnt_id, MathLangUtils::DT::number_t _raw_value) : 
         idnt_type(_idnt_type), 
         idnt_id(_idnt_id), 
         raw_value(_raw_value) {}
-      static Idnt make_raw(MathLangUtils::number_t raw_value) { return Idnt(Raw, -1, raw_value); }
+      static Idnt make_raw(MathLangUtils::DT::number_t raw_value) { return Idnt(Raw, -1, raw_value); }
       static Idnt make_var(int idnt_id) { return Idnt(Var, idnt_id, 0); }
       static Idnt make_func(int idnt_id) { return Idnt(Func, idnt_id, 0); }
       static Idnt make_pre_value() { return Idnt(PreValue, -1, 0); }

@@ -8,7 +8,7 @@ Toy scripting language to calculate math
 
 ### Build binary from source
 
-make sure you have installed `git`, `cmake`, any C++ build system (`make` by default), and any C++ compiler (`g++`, `clang++`, `MVSC`)
+make sure you have installed `git`, `cmake`, any C++ build system (`make` by default), and any C++ compiler (`g++`, `clang++`, `MSVC`)
 ```bash
 git clone https://github.com/revival0728/math-lang.git
 cd math-lang && cmake -B build -S src && cmake --build build --config Release
@@ -45,7 +45,7 @@ fun-call = [fun-name]([[expr] | [expr], ...])
 ```
 The scripts execute based on `expr`.
 
-You can checkout MLS scripts exmaples in the [`examples/`](/examples/) folder.
+You can checkout MLS script exmaples in the [`examples/`](/examples/) folder.
 
 ## Builtins
 
