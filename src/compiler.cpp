@@ -430,7 +430,7 @@ std::ostream& operator<<(std::ostream& os, const Parser& p) {
     for(auto& j : i.idnts) {
       switch(j.idnt_type) {
       case Idnt::Raw:
-        os << j.raw_value << ", ";
+        os << j.raw_value_const() << ", ";
         break;
       case Idnt::None:
         os << "None" << ", ";
@@ -439,10 +439,10 @@ std::ostream& operator<<(std::ostream& os, const Parser& p) {
         os << "PreValue" << ", ";
         break;
       case Idnt::Var:
-        os << "Var(" << j.idnt_id << ")" << ", ";
+        os << "Var(" << j.idnt_id_const() << ")" << ", ";
         break;
       case Idnt::Func:
-        os << "Func(" << j.idnt_id << ")" << ", ";
+        os << "Func(" << j.idnt_id_const() << ")" << ", ";
         break;
       }
     }

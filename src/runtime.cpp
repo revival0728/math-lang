@@ -60,19 +60,19 @@ bool Runtime::has_idnt(int idnt_id) {
 std::pair<bool, const Runtime::number_p> Runtime::get_idnt_value(const Runtime::Idnt& idnt) {
   switch (idnt.idnt_type) {
   case Idnt::PreValue:
-    return {true, std::make_shared<number_t>(pre_value.raw_value)};
+    return {true, std::make_shared<number_t>(pre_value.raw_value())};
     break;
   case Idnt::Raw:
-    return {true, std::make_shared<number_t>(idnt.raw_value)};
+    return {true, std::make_shared<number_t>(idnt.raw_value_const())};
     break;
   case Idnt::Var: {
-    if(!has_idnt(idnt.idnt_id)) {
-      rt_result = RtResult(RtResult::UndefinedVar, "Undefined variable (Idnt_id: ", idnt.idnt_id, ")");
+    if(!has_idnt(idnt.idnt_id_const())) {
+      rt_result = RtResult(RtResult::UndefinedVar, "Undefined variable (Idnt_id: ", idnt.idnt_id_const(), ")");
       return {false, nullptr};
     }
-    auto value = mem[idnt.idnt_id].get<number_t>();
+    auto value = mem[idnt.idnt_id_const()].get<number_t>();
     if(!value.first) {
-      rt_result = RtResult(RtResult::UndefinedVar, "Undefined variable (Idnt_id: ", idnt.idnt_id, ")");
+      rt_result = RtResult(RtResult::UndefinedVar, "Undefined variable (Idnt_id: ", idnt.idnt_id_const(), ")");
       return {false, nullptr};
     }
     return {true, value.second};
@@ -108,11 +108,11 @@ std::pair<bool, const Runtime::func_p> Runtime::get_idnt_func(const Runtime::Idn
     return std::make_pair(false, func_p());
     break;
   case Idnt::Func: {
-    if(!has_idnt(idnt.idnt_id)) {
-      rt_result = RtResult(RtResult::UndefinedFunc, "Undefined function (Idnt_id: ", idnt.idnt_id, ")");
+    if(!has_idnt(idnt.idnt_id_const())) {
+      rt_result = RtResult(RtResult::UndefinedFunc, "Undefined function (Idnt_id: ", idnt.idnt_id_const(), ")");
       return std::make_pair(false, func_p());
     }
-    auto fp = mem[idnt.idnt_id].get<func_t>();
+    auto fp = mem[idnt.idnt_id_const()].get<func_t>();
     if(!fp.first) {
       rt_result = RtResult(RtResult::InvalidUse, "Variables cannot be used as function");
       return std::make_pair(false, func_p());
@@ -159,7 +159,7 @@ Runtime::RtResult Runtime::run(const Compiler::CmplResult& cmpl_res) {
     switch(in.oper) {
     case Operator::set: {
       Idnt dest = in.idnts[0], source = in.idnts[1];
-      if(!has_idnt(dest.idnt_id))
+      if(!has_idnt(dest.idnt_id()))
         return rt_result = RtResult::make_corrupted_error();
       auto vs = get_idnt_value(source);
       if(!vs.first) {
@@ -167,7 +167,7 @@ Runtime::RtResult Runtime::run(const Compiler::CmplResult& cmpl_res) {
           rt_result = RtResult(RtResult::UndefinedVar, "Cannot assign an undefined value to a variable.");
         return rt_result;
       }
-      mem[dest.idnt_id].set<number_t>(*vs.second);
+      mem[dest.idnt_id()].set<number_t>(*vs.second);
       break;
     }
     #define HANDLE_BIN_INST(INST_T, OPER) \
@@ -230,7 +230,7 @@ std::ostream& operator<<(std::ostream& os, const Runtime& rt) {
   os << "pre_value: ";
   switch(rt.pre_value.idnt_type) {
   case Idnt::Raw:
-    os << rt.pre_value.raw_value;
+    os << rt.pre_value.raw_value_const();
     break;
   case Idnt::None:
     os << "None";
@@ -239,10 +239,10 @@ std::ostream& operator<<(std::ostream& os, const Runtime& rt) {
     os << "PreValue";
     break;
   case Idnt::Var:
-    os << "Var(" << rt.pre_value.idnt_id << ")";
+    os << "Var(" << rt.pre_value.idnt_id_const() << ")";
     break;
   case Idnt::Func:
-    os << "Func(" << rt.pre_value.idnt_id << ")";
+    os << "Func(" << rt.pre_value.idnt_id_const() << ")";
     break;
   }
   os << '\n';
