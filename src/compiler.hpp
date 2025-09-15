@@ -3,11 +3,11 @@
 
 #include <string>
 #include <vector>
-#include <map>
 #include <iostream>
 #include <utility>
 #include <deque>
 #include <cctype>
+#include <variant>
 #include "utils.hpp"
 
 class Tokenizer {
@@ -70,18 +70,20 @@ class Parser {
     } oper;
     struct Idnt {
       enum Type { Raw, Var, Func, PreValue, None } idnt_type;
-      int idnt_id;
-      MathLangUtils::number_t raw_value;
-      Idnt() : idnt_type(None), idnt_id(-1), raw_value(0) {}
-      Idnt(Type _idnt_type, int _idnt_id, MathLangUtils::number_t _raw_value) : 
+      std::variant<int, MathLangUtils::DT::number_t> idnt_data;
+      Idnt() : idnt_type(None) {}
+      template<class T> Idnt(Type _idnt_type, const T& _idnt_data) :
         idnt_type(_idnt_type), 
-        idnt_id(_idnt_id), 
-        raw_value(_raw_value) {}
-      static Idnt make_raw(MathLangUtils::number_t raw_value) { return Idnt(Raw, -1, raw_value); }
-      static Idnt make_var(int idnt_id) { return Idnt(Var, idnt_id, 0); }
-      static Idnt make_func(int idnt_id) { return Idnt(Func, idnt_id, 0); }
-      static Idnt make_pre_value() { return Idnt(PreValue, -1, 0); }
-      static Idnt make_none() { return Idnt(None, -1, 0); }
+        idnt_data(_idnt_data) {}
+      int& idnt_id() { return std::get<0>(idnt_data); }
+      MathLangUtils::DT::number_t& raw_value() { return std::get<1>(idnt_data); }
+      int idnt_id_const() const { return std::get<0>(idnt_data); }
+      MathLangUtils::DT::number_t raw_value_const() const { return std::get<1>(idnt_data); }
+      static Idnt make_raw(MathLangUtils::DT::number_t raw_value) { return Idnt(Raw, raw_value); }
+      static Idnt make_var(int idnt_id) { return Idnt(Var, idnt_id); }
+      static Idnt make_func(int idnt_id) { return Idnt(Func, idnt_id); }
+      static Idnt make_pre_value() { return Idnt(PreValue, -1); }
+      static Idnt make_none() { return Idnt(None, -1); }
     };
     // For Operator::func: idnts stores in reverse order
     //  e.g. [arg_2, arg_1, arg_0, func_idnt]
@@ -111,6 +113,8 @@ class Parser {
   std::vector<CalcStep> calc_list;
   std::unordered_map<std::string, int> idnt_table;
   std::unordered_map<std::string, int> nidnt_table;  // new idnt table
+  std::vector<int> tmp_buffer;  // temporary buffer during calculating
+  int aval_tmp_buffer_index;  // avaliable temporary idnt
   int aval_idnt_id;  // avaliable idnt ID
   // get a new idnt_id
   // @return idnt_id
@@ -121,11 +125,15 @@ class Parser {
   int get_idnt_id(const std::string& idnt); 
   // merge idnt_table and nidnt_table
   void merge_idnt_table();
+  // get avaliable temp buffer from tmp_buffer, if not push new element to tmp_buffer and return it
+  int apply_tmp_buffer();
+  // set aval_tmp_buffer_index to 0
+  void free_tmp_buffer();
 
   // store Idnt::PreValue to a temp memory
   //  :add CalcStep(Operator::set, {TEMP, PreValue}) to calc_list
   //  :only modifies calc_list
-  // @return temp memory (Idnt)
+  // @return temp buffer (Idnt)
   CalcStep::Idnt store_pre_value();  
 
   private:
@@ -153,6 +161,10 @@ class Compiler {
   public:
   Compiler();
   std::pair<CmplStat, const CmplResult&> compile(const std::string&);
+
+  #ifdef DEBUG
+    friend std::ostream& operator<<(std::ostream&, const Compiler&);
+  #endif
 };
 
 #endif

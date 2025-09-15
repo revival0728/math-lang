@@ -1,19 +1,20 @@
 #include "utils.hpp"
+#include "mathlib.hpp"
 #include <cassert>
 #include <cctype>
-#include <stack>
 #include <string>
-#include <cmath>
-#include <iostream>
+#include <stack>
 
-bool MathLangUtils::is_str_operator(const std::string& str) {
-  for(auto& oper : MathLangUtils::ALL_OPER) {
+using namespace MathLangUtils;
+
+bool MathLangUtils::String::is_operator(const std::string& str) {
+  for(auto& oper : MathLangUtils::Grammer::ALL_OPER) {
     if(oper == str) return true;
   }
   return false;
 }
 
-bool MathLangUtils::is_str_number(const std::string& str) {
+bool MathLangUtils::String::is_number(const std::string& str) {
   bool in_num = false;
   bool has_dot = false;
   bool has_e = false;
@@ -45,16 +46,12 @@ bool MathLangUtils::is_str_number(const std::string& str) {
   return false;
 }
 
-MathLangUtils::number_t MathLangUtils::pow(MathLangUtils::number_t a, MathLangUtils::number_t b) {
-  return std::pow(a, b);
-}
-
-MathLangUtils::number_t MathLangUtils::str_to_number(const std::string& str) {
+MathLangUtils::DT::number_t MathLangUtils::String::to_number(const std::string& str) {
   auto c_str = str.c_str();
   char *pos = nullptr;
-  std::stack<number_t> expo;
+  std::stack<DT::number_t> expo;
   do {
-    number_t val = std::strtod(c_str, &pos);
+    DT::number_t val = std::strtod(c_str, &pos);
     if(*pos == '^') {
       ++pos;
     }
@@ -62,17 +59,17 @@ MathLangUtils::number_t MathLangUtils::str_to_number(const std::string& str) {
     c_str = pos;
   } while(*pos != '\0');
   assert(!expo.empty());
-  number_t ret = expo.top(); expo.pop();
+  DT::number_t ret = expo.top(); expo.pop();
   while(!expo.empty()) {
-    ret = MathLangUtils::pow(expo.top(), ret);
+    ret = MathLangLib::_pow(expo.top(), ret);
     expo.pop();
   }
   return ret;
 }
 
-MathLangUtils::hash_t MathLangUtils::hash(const std::string& str) {
-  constexpr MathLangUtils::hash_t base1 = 17, base2 = 61, M = 1e9 + 7;
-  MathLangUtils::hash_t res1 = 0, res2 = 0;
+MathLangUtils::DT::hash_t MathLangUtils::Hash::hash(const std::string& str) {
+  constexpr DT::hash_t base1 = 17, base2 = 61, M = 1e9 + 7;
+  DT::hash_t res1 = 0, res2 = 0;
   for(auto& c : str) {
     res1 += c; res1 *= base1;
     res2 += c; res2 *= base2;

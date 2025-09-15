@@ -7,7 +7,6 @@
 #include <string>
 #include <utility>
 #include <iostream>
-#include <fstream>
 
 #define PROJ_INTER_NAME TO_STRING(PROJ_NAME)
 #define PROJ_VERSION TO_STRING(PROJ_VERSION_MAJOR.PROJ_VERSION_MINOR.PROJ_VERSION_PATCH)
@@ -16,12 +15,13 @@
 
 class Interpreter {
   private:
+  bool hide_prefix;
   const char* input_prefix = ">> ";
 
   protected:
   Compiler compiler;
   Runtime runtime;
-  std::string get_input(std::istream&, bool);
+  std::string get_input(std::istream&);
   template<class ...P> void println(const P...);
 
   public:

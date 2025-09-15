@@ -7,60 +7,66 @@
 #include <tuple>
 #include <iostream>
 
-namespace Debug {
-  class Console {
-    public:
-      template<class T> friend Console& operator<<(Console& console, T val) {
-        #ifdef DEBUG
-          std::cerr << val;
-          return console;
-        #else
-          return console;
-        #endif
-      }
-  };
-  static Console console;
-}
-
 namespace MathLangUtils {
-  using number_t = double;
-  using number_p = std::shared_ptr<number_t>;
-  using args_t = std::vector<number_p>;
-  using raw_func_t = number_t(args_t&);
-  using raw_func_p = number_t(*)(args_t&);
-  using func_t = std::function<raw_func_t>;
-  using func_p = std::shared_ptr<func_t>;
-  const std::string RT_RESULT_CODE[] = {
-    "Ok",
-    "Error",
-    "InvalidUse",
-    "UndefinedVar",
-    "UndefinedFunc",
-    "Null",
-  };
-  const std::string ALL_OPER[] = {"=","+","*","-","/","(",")",","};
-  const std::string ALL_OPER_NAMES[] = {"set", "plus", "multiply", "minus", "divide", "lparen", "rparen", "argsplit", "func", "print", "null"};
-  const int OPER_RANK[]              = {0    , 2     , 3         , 2      , 3       , 5       , 5       , 1         , 4  };
-  const std::size_t ALL_OPER_LEN = sizeof(ALL_OPER) / sizeof(std::string);
-  const std::size_t OPER_RANK_LEN = sizeof(OPER_RANK) / sizeof(int);
-  const std::size_t ALL_OPER_NAMES_LEN = sizeof(ALL_OPER_NAMES) / sizeof(std::string);
-  static_assert(ALL_OPER_LEN + 1 == OPER_RANK_LEN, "Rank count must equals to Operator count");
-  static_assert(ALL_OPER_LEN + 3 == ALL_OPER_NAMES_LEN, "Operator Name count must equals to Full Operator count");
-  bool is_str_operator(const std::string&);
-  bool is_str_number(const std::string&);
-  number_t pow(number_t, number_t);
-  number_t str_to_number(const std::string&);
+  namespace Debug {
+    class Console {
+      public:
+        template<class T> friend Console& operator<<(Console& console, T val) {
+          #ifdef DEBUG
+            std::cerr << val;
+            return console;
+          #else
+            return console;
+          #endif
+        }
+    };
+    static Console console;
+  }
+  namespace DT {
+    using number_t = double;
+    using number_p = std::shared_ptr<number_t>;
+    using args_t = std::vector<number_p>;
+    using raw_func_t = number_t(args_t&);
+    using raw_func_p = number_t(*)(args_t&);
+    using func_t = std::function<raw_func_t>;
+    using func_p = std::shared_ptr<func_t>;
+    using hash_t = int64_t;
+    using exprsye_t = uint16_t;
+  }
 
-  using hash_t = int64_t;
-  hash_t hash(const std::string&);
-  constexpr hash_t hash_cxpr(
-    const char* str, 
-    hash_t res1 = 0, hash_t res2 = 0, 
-    hash_t base1 = 17, hash_t base2 = 61, 
-    hash_t M = 1e9 + 7) {
-    return *str ? 
-      hash_cxpr(str + 1, (res1 + (*str)) * base1 % M, (res2 + (*str)) * base2 % M, base1, base2, M) :
-      res1 ^ res2;
+  namespace CLI {
+    const std::string RT_RESULT_CODE[] = {
+      "Ok",
+      "Error",
+      "InvalidUse",
+      "UndefinedVar",
+      "UndefinedFunc",
+      "Null",
+    };
+  }
+
+  namespace Grammer {
+    const std::string ALL_OPER[] = {"=","+","*","-","/","(",")",","};
+    const std::string ALL_OPER_NAMES[] = {"set", "plus", "multiply", "minus", "divide", "lparen", "rparen", "argsplit", "func", "print", "null"};
+    const int OPER_RANK[]              = {0    , 2     , 3         , 2      , 3       , 5       , 5       , 1         , 4  };
+    constexpr std::size_t ALL_OPER_LEN = sizeof(ALL_OPER) / sizeof(std::string);
+    constexpr std::size_t OPER_RANK_LEN = sizeof(OPER_RANK) / sizeof(int);
+    constexpr std::size_t ALL_OPER_NAMES_LEN = sizeof(ALL_OPER_NAMES) / sizeof(std::string);
+    static_assert(ALL_OPER_LEN + 1 == OPER_RANK_LEN, "Rank count must equals to Operator count");
+    static_assert(ALL_OPER_LEN + 3 == ALL_OPER_NAMES_LEN, "Operator Name count must equals to Full Operator count");
+  }
+
+  namespace Hash {
+    DT::hash_t hash(const std::string&);
+    constexpr DT::hash_t hash_cxpr(
+      const char* str, 
+      DT::hash_t res1 = 0, DT::hash_t res2 = 0, 
+      DT::hash_t base1 = 17, DT::hash_t base2 = 61, 
+      DT::hash_t M = 1e9 + 7) {
+      return *str ? 
+        hash_cxpr(str + 1, (res1 + (*str)) * base1 % M, (res2 + (*str)) * base2 % M, base1, base2, M) :
+        res1 ^ res2;
+    }
   }
 
   namespace String {
@@ -71,6 +77,9 @@ namespace MathLangUtils {
     template<> inline std::string to_string<std::string>(const std::string&);
     template<class T> inline std::string bs(const T&);
     template<class T, class ...P> inline std::string bs(const T&, const P&...);
+    bool is_operator(const std::string&);
+    bool is_number(const std::string&);
+    DT::number_t to_number(const std::string&);
     void strip_self(std::string&);
     std::string strip(const std::string&);
   }

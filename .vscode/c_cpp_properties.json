@@ -4,7 +4,8 @@
             "name": "Mac",
             "includePath": [
                 "${workspaceFolder}/src",
-                "${workspaceFolder}/build"
+                "${workspaceFolder}/build",
+                "${workspaceFolder}/build/src"
             ],
             "defines": [],
             "compilerPath": "/usr/bin/g++",

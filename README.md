@@ -8,10 +8,11 @@ Toy scripting language to calculate math
 
 ### Build binary from source
 
-make sure you have installed `git`, `cmake`, any C++ build system (`make` by default), and any C++ compiler (`g++`, `clang++`, `MVSC`)
+make sure you have installed `git`, `cmake`, any C++ build system (`make` by default), and any C++ compiler (`g++`, `clang++`, `MSVC`)
 ```bash
 git clone https://github.com/revival0728/math-lang.git
-cd math-lang && cmake -B build -S src && cmake --build build --config Release
+cd math-lang 
+cmake -B build -S . && cmake --build build --config Release -DBUILD_TESTS=OFF
 ```
 
 ### Download from Release
@@ -21,7 +22,7 @@ You can download `math-lang` binary from [Release](https://github.com/revival072
 2. run the binary
 
 ```bash
-./math-lang/build/math-lang
+./build/src/math-lang
 ```
 
 ## Binary Usage
@@ -45,7 +46,7 @@ fun-call = [fun-name]([[expr] | [expr], ...])
 ```
 The scripts execute based on `expr`.
 
-You can checkout MLS scripts exmaples in the [`examples/`](/examples/) folder.
+You can checkout MLS script exmaples in the [`examples/`](/examples/) folder.
 
 ## Builtins
 
@@ -56,7 +57,7 @@ You can checkout MLS scripts exmaples in the [`examples/`](/examples/) folder.
 | pi   | 3.14159265358979323846264338327950288 |
 | e    | 2.71828182845904523536028747135266250 |
 
-## Functions
+### Functions
 
 | name | document |
 |------|----------|
@@ -81,3 +82,6 @@ You can checkout MLS scripts exmaples in the [`examples/`](/examples/) folder.
 | mod(a, b) | `CPP` `<cmath>` function (`fmod` which computes remainder of division) |
 
 You can checkout [`mathlib.hpp`](/src/mathlib.hpp) for more specific information.
+
+## TODO
+- [X] optimize temporary memory usage

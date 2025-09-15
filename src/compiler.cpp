@@ -1,9 +1,8 @@
-#include <stack>
 #include <cassert>
-#include <cstdint>
 #include "compiler.hpp"
 #include "utils.hpp"
-#include "mathlib.hpp"
+
+using namespace MathLangUtils;
 
 // Tokenizer
 Tokenizer::Tokenizer() {
@@ -99,12 +98,14 @@ Parser::Parser() {
   calc_list = std::vector<CalcStep>();
   cmpl_res = CmplStat(CmplStat::Blank, "");
   hash_oper = std::unordered_map<std::string, int>();
-  for(auto& oper : MathLangUtils::ALL_OPER) {
-    hash_oper[oper] = MathLangUtils::hash(oper);
+  for(auto& oper : Grammer::ALL_OPER) {
+    hash_oper[oper] = Hash::hash(oper);
   }
   aval_idnt_id = 0;
   nidnt_table = std::unordered_map<std::string, int>();
   idnt_table = std::unordered_map<std::string, int>();
+  aval_tmp_buffer_index = 0;
+  tmp_buffer = std::vector<int>();
 }
 
 Parser::Result_Ref Parser::get_parse_result() {
@@ -134,10 +135,21 @@ void Parser::merge_idnt_table() {
   assert(nidnt_table.empty());
 }
 
+int Parser::apply_tmp_buffer() {
+  if(aval_tmp_buffer_index == tmp_buffer.size()) {
+    tmp_buffer.push_back(new_idnt_id());
+  }
+  return tmp_buffer[aval_tmp_buffer_index++];
+}
+
+void Parser::free_tmp_buffer() {
+  aval_tmp_buffer_index = 0;
+}
+
 Parser::CalcStep::Idnt Parser::store_pre_value() {
   using Idnt = Parser::CalcStep::Idnt;
   using Operator = Parser::CalcStep::Operator;
-  Idnt temp = Idnt::make_var(new_idnt_id());
+  Idnt temp = Idnt::make_var(apply_tmp_buffer());
   calc_list.push_back(CalcStep(Operator::set, {temp, Idnt::make_pre_value()}));
   return temp;
 }
@@ -147,7 +159,6 @@ std::pair<bool, Parser::CalcStep::Idnt> Parser::sy_algo(
   std::deque<Parser::CalcStep::Operator>& opers) {
   using Idnt = Parser::CalcStep::Idnt;
   using Operator = Parser::CalcStep::Operator;
-  using namespace MathLangUtils;
 
   Debug::console << "sy_algo()\n";
   int in_func = 0;
@@ -264,7 +275,7 @@ std::pair<bool, Parser::CalcStep::Idnt> Parser::sy_algo(
       POP_TMP_TO_ORIGIN_DEQ();
       continue;
     }
-    if(!in_func && !opers.empty() && !idnts.empty() && OPER_RANK[top_oper] <= OPER_RANK[opers.back()]) {
+    if(!in_func && !opers.empty() && !idnts.empty() && Grammer::OPER_RANK[top_oper] <= Grammer::OPER_RANK[opers.back()]) {
       ADD_DIV_TO_TMP_DEQ();
       tmp_opers.push_back(top_oper);
       // if top_idnt(ti) is PreValue, it will be covered by newest operation.
@@ -329,19 +340,19 @@ std::pair<CmplStat, Parser::Result_Ref> Parser::parse(const Tokenizer::Result_T&
   // every bit represents expected operator or idnt
   // the order of bit equals to the reverse order of ALL_OPER
   // the last bit of it represents idnt
-  std::uint16_t expect_bits = 0b000001101;
+  DT::exprsye_t expect_bits = 0b000001101;
   assert((expect_bits | ((1 << 10) - 1)) == (1 << 10) - 1);
 
   #define IS_INVALID_TOKEN(rb) (((expect_bits | rb) ^ expect_bits) != 0)
   #define TOKENS_TO_OPERATOR_MAPPING(tkr, oper, rb, eb) \
-    case hash_cxpr(tkr): {\
+  case Hash::hash_cxpr(tkr): {\
       if(IS_INVALID_TOKEN(rb)) { \
         Debug::console << "Invalid syntax detected!\n"; \
         std::string expt; \
         if(expect_bits & 1) expt.append("identifier "); \
         for(int i = 1; i < 9; ++i) { \
           if(expect_bits & (1 << i)) { \
-            expt.append(ALL_OPER[ALL_OPER_LEN - i]); \
+            expt.append(Grammer::ALL_OPER[Grammer::ALL_OPER_LEN - i]); \
             expt.push_back(' '); \
           } \
         } \
@@ -355,7 +366,7 @@ std::pair<CmplStat, Parser::Result_Ref> Parser::parse(const Tokenizer::Result_T&
     }
 
   for(auto tk = tokens.begin(); tk != tokens.end(); ++tk) {
-    switch (hash(*tk)) {
+    switch (Hash::hash(*tk)) {
     TOKENS_TO_OPERATOR_MAPPING("=", Operator::set,      0b100000000, 0b000001001)
     TOKENS_TO_OPERATOR_MAPPING("+", Operator::plus,     0b010000000, 0b000001001)
     TOKENS_TO_OPERATOR_MAPPING("*", Operator::multiply, 0b001000000, 0b000001001)
@@ -368,10 +379,10 @@ std::pair<CmplStat, Parser::Result_Ref> Parser::parse(const Tokenizer::Result_T&
       if(IS_INVALID_TOKEN(0b000000001)) {
         Debug::console << "Invalid syntax detected!\n";
         std::string expt;
-        if(expect_bits & 1) expt.append("identifier "); \
+        if(expect_bits & 1) expt.append("identifier ");
         for(int i = 1; i < 9; ++i) {
           if(expect_bits & (1 << i)) {
-            expt.append(ALL_OPER[ALL_OPER_LEN - i]);
+            expt.append(Grammer::ALL_OPER[Grammer::ALL_OPER_LEN - i]);
             expt.push_back(' ');
           }
         }
@@ -379,8 +390,8 @@ std::pair<CmplStat, Parser::Result_Ref> Parser::parse(const Tokenizer::Result_T&
         cmpl_res = CmplStat(CmplStat::Failed, "Syntax Error: expected { ", expt, "} at token position ", position, " found an identifier");
         return {cmpl_res, pr_result};
       }
-      if(is_str_number(*tk)) {
-        idnts.push_back(Idnt::make_raw(MathLangUtils::str_to_number(*tk)));
+      if(String::is_number(*tk)) {
+        idnts.push_back(Idnt::make_raw(String::to_number(*tk)));
         expect_bits = 0b011110110;
         break;
       }
@@ -402,6 +413,7 @@ std::pair<CmplStat, Parser::Result_Ref> Parser::parse(const Tokenizer::Result_T&
   auto [ok, res_idnt] = sy_algo(idnts, opers);
   assert(opers.empty());
   assert(idnts.empty());
+  free_tmp_buffer();
   if(!ok) return {cmpl_res, pr_result};
   if(calc_list.empty()) {
     calc_list.push_back(CalcStep(Operator::print, {res_idnt}));
@@ -428,11 +440,11 @@ std::ostream& operator<<(std::ostream& os, const Parser& p) {
     os << k << ": " << v << '\n';
   os << "calc_list:\n";
   for(auto& i : p.calc_list) {
-    os << MathLangUtils::ALL_OPER_NAMES[i.oper] << " [" ;
+    os << Grammer::ALL_OPER_NAMES[i.oper] << " [" ;
     for(auto& j : i.idnts) {
       switch(j.idnt_type) {
       case Idnt::Raw:
-        os << j.raw_value << ", ";
+        os << j.raw_value_const() << ", ";
         break;
       case Idnt::None:
         os << "None" << ", ";
@@ -441,10 +453,10 @@ std::ostream& operator<<(std::ostream& os, const Parser& p) {
         os << "PreValue" << ", ";
         break;
       case Idnt::Var:
-        os << "Var(" << j.idnt_id << ")" << ", ";
+        os << "Var(" << j.idnt_id_const() << ")" << ", ";
         break;
       case Idnt::Func:
-        os << "Func(" << j.idnt_id << ")" << ", ";
+        os << "Func(" << j.idnt_id_const() << ")" << ", ";
         break;
       }
     }
@@ -459,6 +471,7 @@ std::ostream& operator<<(std::ostream& os, const Parser& p) {
   for(auto& [k, v] : p.nidnt_table)
     os << k << ": " << v << '\n';
   os << "aval_idnt_id: " << p.aval_idnt_id << '\n';
+  os << "tmp_buffer.size(): " << p.tmp_buffer.size() << '\n';
   os << "[Parser END]";
   return os;
 }
@@ -468,7 +481,6 @@ Compiler::Compiler() {}
 
 std::pair<CmplStat, const Compiler::CmplResult&> Compiler::compile(const std::string& sline) {
   auto tokens = tokenizer.tokenize(sline);
-  Debug::console << tokenizer << '\n';
   if(tokens.empty()) {
     Debug::console << "User input length is 0, stop at tokenization\n";
     auto cmpl_stat = CmplStat(CmplStat::Empty, "Empty line");
@@ -476,6 +488,15 @@ std::pair<CmplStat, const Compiler::CmplResult&> Compiler::compile(const std::st
     return {cmpl_stat, cmpl_res};
   }
   auto ret = parser.parse(tokens);
-  Debug::console << parser << '\n';
   return ret;
 }
+
+#ifdef DEBUG
+std::ostream& operator<<(std::ostream& os, const Compiler& c) {
+  os << "[Compiler]:\n";
+  os << c.tokenizer << '\n';
+  os << c.parser << '\n';
+  os << "[Compiler END]";
+  return os;
+}
+#endif
