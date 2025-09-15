@@ -6,14 +6,14 @@
 
 using namespace MathLangUtils;
 
-bool MathLangUtils::String::is_str_operator(const std::string& str) {
+bool MathLangUtils::String::is_operator(const std::string& str) {
   for(auto& oper : MathLangUtils::Grammer::ALL_OPER) {
     if(oper == str) return true;
   }
   return false;
 }
 
-bool MathLangUtils::String::is_str_number(const std::string& str) {
+bool MathLangUtils::String::is_number(const std::string& str) {
   bool in_num = false;
   bool has_dot = false;
   bool has_e = false;
@@ -45,7 +45,7 @@ bool MathLangUtils::String::is_str_number(const std::string& str) {
   return false;
 }
 
-MathLangUtils::DT::number_t MathLangUtils::String::str_to_number(const std::string& str) {
+MathLangUtils::DT::number_t MathLangUtils::String::to_number(const std::string& str) {
   auto c_str = str.c_str();
   char *pos = nullptr;
   std::stack<DT::number_t> expo;

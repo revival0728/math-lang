@@ -377,8 +377,8 @@ std::pair<CmplStat, Parser::Result_Ref> Parser::parse(const Tokenizer::Result_T&
         cmpl_res = CmplStat(CmplStat::Failed, "Syntax Error: expected { ", expt, "} at token position ", position, " found an identifier");
         return {cmpl_res, pr_result};
       }
-      if(String::is_str_number(*tk)) {
-        idnts.push_back(Idnt::make_raw(String::str_to_number(*tk)));
+      if(String::is_number(*tk)) {
+        idnts.push_back(Idnt::make_raw(String::to_number(*tk)));
         expect_bits = 0b011110110;
         break;
       }

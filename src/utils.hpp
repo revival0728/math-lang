@@ -7,22 +7,21 @@
 #include <tuple>
 #include <iostream>
 
-namespace Debug {
-  class Console {
-    public:
-      template<class T> friend Console& operator<<(Console& console, T val) {
-        #ifdef DEBUG
-          std::cerr << val;
-          return console;
-        #else
-          return console;
-        #endif
-      }
-  };
-  static Console console;
-}
-
 namespace MathLangUtils {
+  namespace Debug {
+    class Console {
+      public:
+        template<class T> friend Console& operator<<(Console& console, T val) {
+          #ifdef DEBUG
+            std::cerr << val;
+            return console;
+          #else
+            return console;
+          #endif
+        }
+    };
+    static Console console;
+  }
   namespace DT {
     using number_t = double;
     using number_p = std::shared_ptr<number_t>;
@@ -78,9 +77,9 @@ namespace MathLangUtils {
     template<> inline std::string to_string<std::string>(const std::string&);
     template<class T> inline std::string bs(const T&);
     template<class T, class ...P> inline std::string bs(const T&, const P&...);
-    bool is_str_operator(const std::string&);
-    bool is_str_number(const std::string&);
-    DT::number_t str_to_number(const std::string&);
+    bool is_operator(const std::string&);
+    bool is_number(const std::string&);
+    DT::number_t to_number(const std::string&);
     void strip_self(std::string&);
     std::string strip(const std::string&);
   }
