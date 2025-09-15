@@ -113,6 +113,8 @@ class Parser {
   std::vector<CalcStep> calc_list;
   std::unordered_map<std::string, int> idnt_table;
   std::unordered_map<std::string, int> nidnt_table;  // new idnt table
+  std::vector<int> tmp_buffer;  // temporary buffer during calculating
+  int aval_tmp_buffer_index;  // avaliable temporary idnt
   int aval_idnt_id;  // avaliable idnt ID
   // get a new idnt_id
   // @return idnt_id
@@ -123,11 +125,15 @@ class Parser {
   int get_idnt_id(const std::string& idnt); 
   // merge idnt_table and nidnt_table
   void merge_idnt_table();
+  // get avaliable temp buffer from tmp_buffer, if not push new element to tmp_buffer and return it
+  int apply_tmp_buffer();
+  // set aval_tmp_buffer_index to 0
+  void free_tmp_buffer();
 
   // store Idnt::PreValue to a temp memory
   //  :add CalcStep(Operator::set, {TEMP, PreValue}) to calc_list
   //  :only modifies calc_list
-  // @return temp memory (Idnt)
+  // @return temp buffer (Idnt)
   CalcStep::Idnt store_pre_value();  
 
   private:

@@ -31,7 +31,7 @@ namespace MathLangUtils {
     using func_t = std::function<raw_func_t>;
     using func_p = std::shared_ptr<func_t>;
     using hash_t = int64_t;
-    using syexpt_t = uint16_t;
+    using exprsye_t = uint16_t;
   }
 
   namespace CLI {

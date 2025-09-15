@@ -104,6 +104,8 @@ Parser::Parser() {
   aval_idnt_id = 0;
   nidnt_table = std::unordered_map<std::string, int>();
   idnt_table = std::unordered_map<std::string, int>();
+  aval_tmp_buffer_index = 0;
+  tmp_buffer = std::vector<int>();
 }
 
 Parser::Result_Ref Parser::get_parse_result() {
@@ -133,10 +135,21 @@ void Parser::merge_idnt_table() {
   assert(nidnt_table.empty());
 }
 
+int Parser::apply_tmp_buffer() {
+  if(aval_tmp_buffer_index == tmp_buffer.size()) {
+    tmp_buffer.push_back(new_idnt_id());
+  }
+  return tmp_buffer[aval_tmp_buffer_index++];
+}
+
+void Parser::free_tmp_buffer() {
+  aval_tmp_buffer_index = 0;
+}
+
 Parser::CalcStep::Idnt Parser::store_pre_value() {
   using Idnt = Parser::CalcStep::Idnt;
   using Operator = Parser::CalcStep::Operator;
-  Idnt temp = Idnt::make_var(new_idnt_id());
+  Idnt temp = Idnt::make_var(apply_tmp_buffer());
   calc_list.push_back(CalcStep(Operator::set, {temp, Idnt::make_pre_value()}));
   return temp;
 }
@@ -327,7 +340,7 @@ std::pair<CmplStat, Parser::Result_Ref> Parser::parse(const Tokenizer::Result_T&
   // every bit represents expected operator or idnt
   // the order of bit equals to the reverse order of ALL_OPER
   // the last bit of it represents idnt
-  DT::syexpt_t expect_bits = 0b000001101;
+  DT::exprsye_t expect_bits = 0b000001101;
   assert((expect_bits | ((1 << 10) - 1)) == (1 << 10) - 1);
 
   #define IS_INVALID_TOKEN(rb) (((expect_bits | rb) ^ expect_bits) != 0)
@@ -400,6 +413,7 @@ std::pair<CmplStat, Parser::Result_Ref> Parser::parse(const Tokenizer::Result_T&
   auto [ok, res_idnt] = sy_algo(idnts, opers);
   assert(opers.empty());
   assert(idnts.empty());
+  free_tmp_buffer();
   if(!ok) return {cmpl_res, pr_result};
   if(calc_list.empty()) {
     calc_list.push_back(CalcStep(Operator::print, {res_idnt}));
