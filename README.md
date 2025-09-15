@@ -84,4 +84,4 @@ You can checkout MLS script exmaples in the [`examples/`](/examples/) folder.
 You can checkout [`mathlib.hpp`](/src/mathlib.hpp) for more specific information.
 
 ## TODO
-- [ ] optimize temporary memory usage
+- [V] optimize temporary memory usage
