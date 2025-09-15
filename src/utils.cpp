@@ -3,6 +3,7 @@
 #include <cassert>
 #include <cctype>
 #include <string>
+#include <stack>
 
 using namespace MathLangUtils;
 
