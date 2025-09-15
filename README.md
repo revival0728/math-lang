@@ -11,7 +11,8 @@ Toy scripting language to calculate math
 make sure you have installed `git`, `cmake`, any C++ build system (`make` by default), and any C++ compiler (`g++`, `clang++`, `MSVC`)
 ```bash
 git clone https://github.com/revival0728/math-lang.git
-cd math-lang && cmake -B build -S src && cmake --build build --config Release
+cd math-lang 
+cmake -B build -S . && cmake --build build --config Release -DBUILD_TESTS=OFF
 ```
 
 ### Download from Release
@@ -21,7 +22,7 @@ You can download `math-lang` binary from [Release](https://github.com/revival072
 2. run the binary
 
 ```bash
-./math-lang/build/math-lang
+./build/src/math-lang
 ```
 
 ## Binary Usage

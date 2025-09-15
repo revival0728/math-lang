@@ -161,6 +161,10 @@ class Compiler {
   public:
   Compiler();
   std::pair<CmplStat, const CmplResult&> compile(const std::string&);
+
+  #ifdef DEBUG
+    friend std::ostream& operator<<(std::ostream&, const Compiler&);
+  #endif
 };
 
 #endif

@@ -1,21 +1,16 @@
-cmake_minimum_required(VERSION 3.10)
-
-project(MathLang VERSION 0.1.0)
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED True)
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-option(DEBUG "Build with debug information" OFF)
-option(PORTABLE "Build portable version" OFF)
-
-add_executable("math-lang" main.cpp compiler.cpp runtime.cpp utils.cpp interpreter.cpp)
+add_library(MathLangInterpreter compiler.cpp runtime.cpp utils.cpp interpreter.cpp)
+add_executable("math-lang" main.cpp)
+target_link_libraries("math-lang" MathLangInterpreter)
 configure_file(config.hpp.in config.hpp)
-target_include_directories("math-lang" PUBLIC ${PROJECT_BINARY_DIR})
 target_compile_options("math-lang" PRIVATE -Wall)
 
 if(DEBUG)
+  target_compile_definitions(MathLangInterpreter PRIVATE DEBUG)
+  target_compile_options(MathLangInterpreter PRIVATE -g)
   target_compile_definitions("math-lang" PRIVATE DEBUG)
   target_compile_options("math-lang" PRIVATE -g)
 else()
+  target_compile_options(MathLangInterpreter PRIVATE -O3)
   target_compile_options("math-lang" PRIVATE -O3)
 endif()
 

@@ -471,6 +471,7 @@ std::ostream& operator<<(std::ostream& os, const Parser& p) {
   for(auto& [k, v] : p.nidnt_table)
     os << k << ": " << v << '\n';
   os << "aval_idnt_id: " << p.aval_idnt_id << '\n';
+  os << "tmp_buffer.size(): " << p.tmp_buffer.size() << '\n';
   os << "[Parser END]";
   return os;
 }
@@ -480,7 +481,6 @@ Compiler::Compiler() {}
 
 std::pair<CmplStat, const Compiler::CmplResult&> Compiler::compile(const std::string& sline) {
   auto tokens = tokenizer.tokenize(sline);
-  Debug::console << tokenizer << '\n';
   if(tokens.empty()) {
     Debug::console << "User input length is 0, stop at tokenization\n";
     auto cmpl_stat = CmplStat(CmplStat::Empty, "Empty line");
@@ -488,6 +488,15 @@ std::pair<CmplStat, const Compiler::CmplResult&> Compiler::compile(const std::st
     return {cmpl_stat, cmpl_res};
   }
   auto ret = parser.parse(tokens);
-  Debug::console << parser << '\n';
   return ret;
 }
+
+#ifdef DEBUG
+std::ostream& operator<<(std::ostream& os, const Compiler& c) {
+  os << "[Compiler]:\n";
+  os << c.tokenizer << '\n';
+  os << c.parser << '\n';
+  os << "[Compiler END]";
+  return os;
+}
+#endif
