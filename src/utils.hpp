@@ -6,8 +6,9 @@
 #include <memory>
 #include <tuple>
 #include <iostream>
+#include <initializer_list>
 
-namespace MathLangUtils {
+namespace Utils {
   namespace Debug {
     class Console {
       public:
@@ -32,7 +33,10 @@ namespace MathLangUtils {
     using func_t = std::function<raw_func_t>;
     using func_p = std::shared_ptr<func_t>;
     using hash_t = int64_t;
-    using exprsye_t = uint16_t;
+    // every bit represents expected operator or idnt
+    // the order of bit equals to the reverse order of ALL_OPER
+    // the last bit of it represents idnt
+    using exprsybit_t = uint16_t;
   }
 
   namespace CLI {
@@ -47,14 +51,20 @@ namespace MathLangUtils {
   }
 
   namespace Grammer {
+    const std::string ALL_KEYWORD[] = {"func", "end"};
     const std::string ALL_OPER[] = {"=","+","*","-","/","(",")",","};
-    const std::string ALL_OPER_NAMES[] = {"set", "plus", "multiply", "minus", "divide", "lparen", "rparen", "argsplit", "func", "print", "null"};
-    const int OPER_RANK[]              = {0    , 2     , 3         , 2      , 3       , 5       , 5       , 1         , 4  };
+    const std::string ALL_OPER_NAMES[] = {"set"      , "plus"     , "multiply" , "minus"    ,"divide"    , "lparen"   , "rparen"   , "argsplit"  , "func", "print", "callbf", "def", "ret", "null"};
+    const int OPER_RANK[]              = {0          , 2          , 3          , 2          , 3          , 5          , 5          , 1           , 4  };
+    const DT::exprsybit_t OPER_BIT[]     = {0b100000000, 0b010000000, 0b001000000, 0b000100000, 0b000010000, 0b000001000, 0b000000100, 0b000000010};
     constexpr std::size_t ALL_OPER_LEN = sizeof(ALL_OPER) / sizeof(std::string);
     constexpr std::size_t OPER_RANK_LEN = sizeof(OPER_RANK) / sizeof(int);
     constexpr std::size_t ALL_OPER_NAMES_LEN = sizeof(ALL_OPER_NAMES) / sizeof(std::string);
+    constexpr std::size_t OPER_BIT_LEN = sizeof(OPER_BIT) / sizeof(DT::exprsybit_t);
     static_assert(ALL_OPER_LEN + 1 == OPER_RANK_LEN, "Rank count must equals to Operator count");
-    static_assert(ALL_OPER_LEN + 3 == ALL_OPER_NAMES_LEN, "Operator Name count must equals to Full Operator count");
+    static_assert(ALL_OPER_LEN + 6 == ALL_OPER_NAMES_LEN, "Operator Name count must equals to Full Operator count");
+    static_assert(OPER_BIT_LEN + 6 == ALL_OPER_NAMES_LEN, "Operator Name count must equals to Full Operator count");
+    bool is_invalid(DT::exprsybit_t expect, DT::exprsybit_t found) { return ((expect | found) ^ expect) != 0; }
+    DT::exprsybit_t make_exprsybit(std::initializer_list<BC::Operator>);
   }
 
   namespace BC {  // ByteCode
@@ -73,24 +83,31 @@ namespace MathLangUtils {
       // virtual operator
       func,
       print,
+      callbf,  // call bultin function
+      def,  // define function
+      ret,  // return
       null,
     };
     struct Idnt {
       enum Type { Raw, Var, Func, PreValue, None } idnt_type;
-      std::variant<int, MathLangUtils::DT::number_t> idnt_data;
-      Idnt() : idnt_type(None) {}
-      template<class T> Idnt(Type _idnt_type, const T& _idnt_data) :
+      std::variant<int, Utils::DT::number_t> idnt_data;
+      // frame_id is cacluated by the depth of frame
+      // global frame is 0, increasing by depth
+      int frame_id;
+      Idnt() : idnt_type(None), frame_id(-1) {}
+      template<class T> Idnt(Type _idnt_type, const T& _idnt_data, int _frame_id) :
         idnt_type(_idnt_type), 
-        idnt_data(_idnt_data) {}
+        idnt_data(_idnt_data),
+        frame_id(_frame_id) {}
       int& idnt_id() { return std::get<0>(idnt_data); }
-      MathLangUtils::DT::number_t& raw_value() { return std::get<1>(idnt_data); }
+      Utils::DT::number_t& raw_value() { return std::get<1>(idnt_data); }
       int idnt_id_const() const { return std::get<0>(idnt_data); }
-      MathLangUtils::DT::number_t raw_value_const() const { return std::get<1>(idnt_data); }
-      static Idnt make_raw(MathLangUtils::DT::number_t raw_value) { return Idnt(Raw, raw_value); }
-      static Idnt make_var(int idnt_id) { return Idnt(Var, idnt_id); }
-      static Idnt make_func(int idnt_id) { return Idnt(Func, idnt_id); }
-      static Idnt make_pre_value() { return Idnt(PreValue, -1); }
-      static Idnt make_none() { return Idnt(None, -1); }
+      Utils::DT::number_t raw_value_const() const { return std::get<1>(idnt_data); }
+      static Idnt make_raw(Utils::DT::number_t raw_value, int frame_id) { return Idnt(Raw, raw_value, frame_id); }
+      static Idnt make_var(int idnt_id, int frame_id) { return Idnt(Var, idnt_id, frame_id); }
+      static Idnt make_func(int idnt_id, int frame_id) { return Idnt(Func, idnt_id, frame_id); }
+      static Idnt make_pre_value(int frame_id) { return Idnt(PreValue, -1, frame_id); }
+      static Idnt make_none() { return Idnt(None, -1, -1); }
     };
     struct Instruction {
       Operator oper;
@@ -98,6 +115,7 @@ namespace MathLangUtils {
       //  e.g. [arg_2, arg_1, arg_0, func_idnt]
       std::vector<Idnt> idnts;
       Instruction() : oper(null), idnts({}) {}
+      Instruction(Operator _oper) : oper(_oper) {}
       Instruction(Operator _oper, const std::vector<Idnt>& _idnts) : oper(_oper), idnts(_idnts) {}
     };
 
@@ -123,6 +141,7 @@ namespace MathLangUtils {
     template<class T> inline std::string to_string(const T[]);
     template<class T> inline std::string to_string(const T&);
     template<> inline std::string to_string<std::string>(const std::string&);
+    template<> inline std::string to_string<DT::exprsybit_t>(const DT::exprsybit_t&);
     template<class T> inline std::string bs(const T&);
     template<class T, class ...P> inline std::string bs(const T&, const P&...);
     bool is_operator(const std::string&);
@@ -168,22 +187,41 @@ namespace MathLangUtils {
       return call_func_with_indices(func, args, make_indices<Traits::arg_cnt>());
     }
   }
+
+  namespace Pipline {
+    struct PrResult {
+      Utils::BC::InstList inst_list;
+    };
+    using CmplResult = PrResult;
+  }
 }
 
-template<> inline std::string MathLangUtils::String::to_string<char>(const char str[]) {
+template<> inline std::string Utils::String::to_string<char>(const char str[]) {
   return std::string(str);
 }
-template <class T> inline std::string MathLangUtils::String::to_string(const T &var) {
+template <class T> inline std::string Utils::String::to_string(const T &var) {
   return std::to_string(var);
 }
-template<> inline std::string MathLangUtils::String::to_string<std::string>(const std::string& str) {
+template<> inline std::string Utils::String::to_string<std::string>(const std::string& str) {
   return str;
 }
-template<class T> inline std::string MathLangUtils::String::bs(const T& var) {
-  return MathLangUtils::String::to_string(var);
+template<> inline std::string Utils::String::to_string<Utils::DT::exprsybit_t>(const Utils::DT::exprsybit_t& bits) {
+  if(bits == 0) return "nothing";
+  std::string str;
+  if(bits & 1) str.append("identifier ");
+  for(int i = 1; i < 9; ++i) {
+    if(bits & (1 << i)) {
+      str.append(Grammer::ALL_OPER[Grammer::ALL_OPER_LEN - i]);
+      str.push_back(' ');
+    }
+  }
+  return str;
 }
-template<class T, class ...P> inline std::string MathLangUtils::String::bs(const T& var, const P&... t) {
-  return MathLangUtils::String::to_string(var) += bs(t...);
+template<class T> inline std::string Utils::String::bs(const T& var) {
+  return Utils::String::to_string(var);
+}
+template<class T, class ...P> inline std::string Utils::String::bs(const T& var, const P&... t) {
+  return Utils::String::to_string(var) += bs(t...);
 }
 
 #endif

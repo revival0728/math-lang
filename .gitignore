@@ -3,3 +3,6 @@ build/
 
 # Clangd
 .cache/
+
+# Testing
+Testing/

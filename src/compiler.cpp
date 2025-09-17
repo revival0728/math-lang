@@ -2,7 +2,7 @@
 #include "compiler.hpp"
 #include "utils.hpp"
 
-using namespace MathLangUtils;
+using namespace Utils;
 
 // Tokenizer
 Tokenizer::Tokenizer() {
@@ -92,70 +92,135 @@ std::ostream& operator<<(std::ostream& os, const Tokenizer& tokenizer) {
 }
 #endif
 
+FIP::FIP() {
+  fptr->frame_id = 0;
+  fptr = std::make_shared<__FIP>();
+  fptr->idnt_table = std::unordered_map<std::string, int>();
+  fptr->tmp_buffer = std::vector<int>();
+  fptr->aval_idnt_id = 0;
+  fptr->aval_tmp_buffer_index = 0;
+  fptr->pframe = nullptr;
+}
+
+FIP FIP::pframe() const {
+  FIP pframe;
+  pframe.fptr = fptr->pframe;
+  return pframe;
+}
+
+FIP FIP::enter_new_frame() {
+  _FIP nfptr;
+  nfptr->pframe = fptr;
+  nfptr->frame_id = fptr->frame_id + 1;
+  fptr = nfptr;
+  return pframe();
+}
+
+void FIP::back_to_parent() {
+  fptr = fptr->pframe;
+}
+
+int FIP::new_idnt_id() {
+  return fptr->aval_idnt_id++;
+}
+
+int FIP::get_idnt_id(const std::string& idnt) {
+  auto id = fptr->idnt_table.find(idnt);
+  if(id == fptr->idnt_table.end()) {
+    return fptr->idnt_table[idnt] = new_idnt_id();
+  }
+  return id->second;
+}
+
+int FIP::apply_tmp_buffer() {
+  if(fptr->aval_tmp_buffer_index == fptr->tmp_buffer.size()) {
+    fptr->tmp_buffer.push_back(new_idnt_id());
+  }
+  return fptr->tmp_buffer[fptr->aval_tmp_buffer_index++];
+}
+
+void FIP::free_tmp_buffer() {
+  fptr->aval_tmp_buffer_index = 0;
+}
+
+int FIP::idnt_count() const {
+  return fptr->idnt_table.size();
+}
+
+int FIP::frame_id() const {
+  return fptr->frame_id;
+}
+
+#ifdef DEBUG
+std::ostream& operator<<(std::ostream&, const FIP& f) {
+  os << "[FIP]:\n";
+  os << "idnt_table:\n";
+  for(auto& [k, v] : f.idnt_table)
+    os << k << ": " << v << '\n';
+  os << "aval_idnt_id: " << f.aval_idnt_id << '\n';
+  os << "tmp_buffer.size(): " << f.tmp_buffer.size() << '\n';
+  os << "[FIP END]";
+  return os;
+}
+#endif
 
 // Parser
 Parser::Parser() {
   inst_list = InstList();
-  cmpl_res = CmplStat(CmplStat::Blank, "");
+  cmpl_stat = CmplStat(CmplStat::Blank, "");
   hash_oper = std::unordered_map<std::string, int>();
   for(auto& oper : Grammer::ALL_OPER) {
     hash_oper[oper] = Hash::hash(oper);
   }
-  aval_idnt_id = 0;
-  nidnt_table = std::unordered_map<std::string, int>();
-  idnt_table = std::unordered_map<std::string, int>();
-  aval_tmp_buffer_index = 0;
-  tmp_buffer = std::vector<int>();
+  hash_kw = std::unordered_map<std::string, int>();
+  for(auto& kw : Grammer::ALL_KEYWORD) {
+    hash_kw[kw] = Hash::hash(kw);
+  }
 }
 
 Parser::Result_Ref Parser::get_parse_result() {
   assert(inst_list.size() > 0 && "[math-lang Parser::get_parse_result()]: Error");
-  pr_result = PrResult::make_result(this);
+  pr_result = make_result();
   return pr_result;
 }
 
-int Parser::new_idnt_id() {
-  return aval_idnt_id++;
-}
-
-int Parser::get_idnt_id(const std::string& idnt) {
-  auto id = idnt_table.find(idnt);
-  auto nid = nidnt_table.find(idnt);
-  if(id == idnt_table.end() && nid == nidnt_table.end()) {
-    return nidnt_table[idnt] = new_idnt_id();
-  }
-  if(id != idnt_table.end()) return id->second;
-  assert((id != idnt_table.end()) ^ (nid != nidnt_table.end()));
-  if(nid != nidnt_table.end()) return nid->second;
-  return -1;  // should never be -1
-}
-
-void Parser::merge_idnt_table() {
-  idnt_table.merge(nidnt_table);
-  assert(nidnt_table.empty());
-}
-
-int Parser::apply_tmp_buffer() {
-  if(aval_tmp_buffer_index == tmp_buffer.size()) {
-    tmp_buffer.push_back(new_idnt_id());
-  }
-  return tmp_buffer[aval_tmp_buffer_index++];
-}
-
-void Parser::free_tmp_buffer() {
-  aval_tmp_buffer_index = 0;
-}
-
-Parser::Idnt Parser::store_pre_value() {
-  Idnt temp = Idnt::make_var(apply_tmp_buffer());
-  inst_list.push_back(Instruction(Operator::set, {temp, Idnt::make_pre_value()}));
+Parser::Idnt Parser::store_pre_value(FIP& frame) {
+  Idnt temp = Idnt::make_var(frame.apply_tmp_buffer(), frame.frame_id());
+  inst_list.push_back(Instruction(Operator::set, {temp, Idnt::make_pre_value(frame.frame_id())}));
   return temp;
+}
+
+Parser::Result_T Parser::make_result() {
+  Result_T ret;
+  ret.inst_list = this->inst_list;
+  return ret;
+}
+
+bool Parser::is_bracket_valid(Parser::ParseRange range) {
+  bool bracket_valid = true;
+  int lcnt = 0, rcnt = 0;
+  for(auto tk = range.first; tk != range.second; ++tk) {
+    if(*tk == "(")
+      ++lcnt;
+    else if(*tk == ")")
+      ++rcnt;
+    if(lcnt - rcnt < 0) {
+      bracket_valid = false;
+      break;
+    }
+  }
+  if(lcnt - rcnt > 0) bracket_valid = false;
+  if(!bracket_valid) {
+    cmpl_stat = CmplStat(CmplStat::Failed, "Invalid bracket count { left:", lcnt, ", right:", rcnt, " }");
+    pr_result = make_result();
+    return false;
+  }
+  return true;
 }
 
 std::pair<bool, Parser::Idnt> Parser::sy_algo(
   std::deque<Parser::Idnt>& idnts, 
   std::deque<Parser::Operator>& opers) {
-
   Debug::console << "sy_algo()\n";
   int in_func = 0;
   bool in_paren = false;
@@ -204,8 +269,8 @@ std::pair<bool, Parser::Idnt> Parser::sy_algo(
       assert(sub_opers.empty());
       if(!res.first) return {false, Idnt()};
       if(res.second.idnt_type == Idnt::PreValue) {
-        Idnt tmp_var = Idnt::make_var(new_idnt_id());
-        inst_list.push_back(Instruction(Operator::set, {tmp_var, Idnt::make_pre_value()}));
+        Idnt tmp_var = Idnt::make_var(frame.new_idnt_id(), frame.frame_id());
+        inst_list.push_back(Instruction(Operator::set, {tmp_var, Idnt::make_pre_value(frame.frame_id())}));
         idnts.push_back(tmp_var);
       } else {
         idnts.push_back(res.second);
@@ -238,7 +303,7 @@ std::pair<bool, Parser::Idnt> Parser::sy_algo(
         // same technique as handling upper rank operator below
         Idnt ti = idnts.back(); idnts.pop_back();
         if(ti.idnt_type == Idnt::PreValue)
-          tmp_idnts.push_back(store_pre_value());
+          tmp_idnts.push_back(store_pre_value(frame));
         else
           tmp_idnts.push_back(ti);
       }
@@ -246,7 +311,7 @@ std::pair<bool, Parser::Idnt> Parser::sy_algo(
     }
     if(in_paren) {
       if(!in_func && top_oper == Operator::argsplit) {
-        cmpl_res = CmplStat(CmplStat::Failed, "Cannot use \",\" out of function expression.");
+        cmpl_stat = CmplStat(CmplStat::Failed, "Cannot use \",\" out of function expression.");
         return {false, Idnt()};
       }
       // deque.push_front(): keeps operators in same order
@@ -262,11 +327,11 @@ std::pair<bool, Parser::Idnt> Parser::sy_algo(
       Idnt func_idnt = idnts.back(); idnts.pop_back();
       if(!idnts.empty() && idnts.back().idnt_type == Idnt::PreValue) {
         idnts.pop_back();
-        idnts.push_back(store_pre_value());
+        idnts.push_back(store_pre_value(frame));
       }
       arg_list.push_back(func_idnt);
       inst_list.push_back(Instruction(top_oper, arg_list));
-      idnts.push_back(Idnt::make_pre_value());
+      idnts.push_back(Idnt::make_pre_value(frame.frame_id()));
       in_func = 0;
       POP_TMP_TO_ORIGIN_DEQ();
       continue;
@@ -279,14 +344,14 @@ std::pair<bool, Parser::Idnt> Parser::sy_algo(
       // e.g. a = 1 * 2 + 3 * 4
       Idnt ti = idnts.back(); idnts.pop_back();
       if(ti.idnt_type == Idnt::PreValue)
-        tmp_idnts.push_back(store_pre_value());
+        tmp_idnts.push_back(store_pre_value(frame));
       else
         tmp_idnts.push_back(ti);
     } else {
       Idnt f = idnts.back(); idnts.pop_back();
       Idnt s = idnts.back(); idnts.pop_back();
       inst_list.push_back(Instruction(top_oper, {s, f}));
-      idnts.emplace_back(Idnt::make_pre_value());
+      idnts.emplace_back(Idnt::make_pre_value(frame.frame_id()));
       Debug::console << "bin oeprs\n";
       POP_TMP_TO_ORIGIN_DEQ();
     }
@@ -294,70 +359,43 @@ std::pair<bool, Parser::Idnt> Parser::sy_algo(
   assert(tmp_idnts.empty() && tmp_opers.empty());
   assert(opers.empty() && idnts.size() >= 1);
   auto ret = idnts.back(); idnts.pop_back();
+  #undef POP_TMP_IDNTS_TO_ORIGIN
+  #undef POP_TMP_OPERS_TO_ORIGIN
+  #undef POP_TMP_TO_ORIGIN_DEQ
+  #undef ADD_DIV_TO_TMP_DEQ
   return {true, ret};
 }
 
-std::pair<CmplStat, Parser::Result_Ref> Parser::parse(const Tokenizer::Result_T& tokens) {
-  assert(!tokens.empty() && "tokens cannot be empty.");
+CmplStat Parser::parse_expr(Parser::ParseRange range) {
+  assert(range.first < range.second && "tokens cannot be empty.");
   Debug::console << "parse()\n";
   inst_list.clear();
 
-  // check is bracket valid
-  {
-    bool bracket_valid = true;
-    int lcnt = 0, rcnt = 0;
-    for(auto& tk : tokens) {
-      if(tk == "(")
-        ++lcnt;
-      else if(tk == ")")
-        ++rcnt;
-      if(lcnt - rcnt < 0) {
-        bracket_valid = false;
-        break;
-      }
-    }
-    if(lcnt - rcnt > 0) bracket_valid = false;
-    if(!bracket_valid) {
-      cmpl_res = CmplStat(CmplStat::Failed, "Invalid bracket count { left:", lcnt, ", right:", rcnt, " }");
-      pr_result = PrResult::make_result(this);
-      return {cmpl_res, pr_result};
-    }
-  }
+  if(!is_bracket_valid(range)) return cmpl_stat;
 
   Debug::console << "making sy_algo stacks...\n";
   // Move and split tokens into two stacks and do sy_algo()
   std::deque<Idnt> idnts;
   std::deque<Operator> opers;
 
-  // every bit represents expected operator or idnt
-  // the order of bit equals to the reverse order of ALL_OPER
-  // the last bit of it represents idnt
-  DT::exprsye_t expect_bits = 0b000001101;
+  DT::exprsybit_t expect_bits = 0b000001101;
   assert((expect_bits | ((1 << 10) - 1)) == (1 << 10) - 1);
 
-  #define IS_INVALID_TOKEN(rb) (((expect_bits | rb) ^ expect_bits) != 0)
+  #define IS_INVALID_TOKEN(rb) (Grammer::is_invalid(expect_bits, rb))
+  // TODO: added detailed error information
   #define TOKENS_TO_OPERATOR_MAPPING(tkr, oper, rb, eb) \
   case Hash::hash_cxpr(tkr): {\
       if(IS_INVALID_TOKEN(rb)) { \
         Debug::console << "Invalid syntax detected!\n"; \
-        std::string expt; \
-        if(expect_bits & 1) expt.append("identifier "); \
-        for(int i = 1; i < 9; ++i) { \
-          if(expect_bits & (1 << i)) { \
-            expt.append(Grammer::ALL_OPER[Grammer::ALL_OPER_LEN - i]); \
-            expt.push_back(' '); \
-          } \
-        } \
-        std::size_t position = tk - tokens.begin() + 1; \
-        cmpl_res = CmplStat(CmplStat::Failed, "Syntax Error: expected { ", expt, "} at token position ", position, " found ", tkr); \
-        return {cmpl_res, pr_result}; \
+        cmpl_stat = CmplStat(CmplStat::Failed, "Syntax Error: expected { ", expect_bits, "} , found ", tkr); \
+        return cmpl_stat; \
       } \
       opers.push_back(oper); \
       expect_bits = eb; \
       break; \
     }
 
-  for(auto tk = tokens.begin(); tk != tokens.end(); ++tk) {
+  for(auto tk = range.first; tk != range.second; ++tk) {
     switch (Hash::hash(*tk)) {
     TOKENS_TO_OPERATOR_MAPPING("=", Operator::set,      0b100000000, 0b000001001)
     TOKENS_TO_OPERATOR_MAPPING("+", Operator::plus,     0b010000000, 0b000001001)
@@ -370,56 +408,122 @@ std::pair<CmplStat, Parser::Result_Ref> Parser::parse(const Tokenizer::Result_T&
     default:
       if(IS_INVALID_TOKEN(0b000000001)) {
         Debug::console << "Invalid syntax detected!\n";
-        std::string expt;
-        if(expect_bits & 1) expt.append("identifier ");
-        for(int i = 1; i < 9; ++i) {
-          if(expect_bits & (1 << i)) {
-            expt.append(Grammer::ALL_OPER[Grammer::ALL_OPER_LEN - i]);
-            expt.push_back(' ');
-          }
-        }
-        std::size_t position = tk - tokens.begin() + 1;
-        cmpl_res = CmplStat(CmplStat::Failed, "Syntax Error: expected { ", expt, "} at token position ", position, " found an identifier");
-        return {cmpl_res, pr_result};
+        cmpl_stat = CmplStat(CmplStat::Failed, "Syntax Error: expected { ", expect_bits, "} found an identifier");
+        return cmpl_stat;
       }
       if(String::is_number(*tk)) {
-        idnts.push_back(Idnt::make_raw(String::to_number(*tk)));
+        idnts.push_back(Idnt::make_raw(String::to_number(*tk), frame.frame_id()));
         expect_bits = 0b011110110;
         break;
       }
       // function exists in both Idnt and Operator
-      if(*std::next(tk) == "(") {
-        idnts.push_back(Idnt::make_func(get_idnt_id(*tk)));
+      if(std::next(tk) != range.second && *std::next(tk) == "(") {
+        idnts.push_back(Idnt::make_func(frame.get_idnt_id(*tk), frame.frame_id()));
         opers.push_back(Operator::func);
         expect_bits = 0b000001000;
         break;
       }
       // Assume it is a Idnt::Var
-      idnts.push_back(Idnt::make_var(get_idnt_id(*tk)));
+      idnts.push_back(Idnt::make_var(frame.get_idnt_id(*tk), frame.frame_id()));
       expect_bits = 0b111110110;
       break;
     }
   }
+  #undef IS_INVALID_TOKEN
+  #undef TOKENS_TO_OPERATOR_MAPPING
   Debug::console << "idnts.size(): " << idnts.size() << '\n';
   Debug::console << "oeprs.size(): " << opers.size() << '\n';
   auto [ok, res_idnt] = sy_algo(idnts, opers);
   assert(opers.empty());
   assert(idnts.empty());
-  free_tmp_buffer();
-  if(!ok) return {cmpl_res, pr_result};
+  frame.free_tmp_buffer();
+  if(!ok) return cmpl_stat;
   if(inst_list.empty()) {
     inst_list.push_back(Instruction(Operator::print, {res_idnt}));
-    cmpl_res = CmplStat(CmplStat::Ok, "Compiled successfully.");
-    pr_result = PrResult::make_result(this);
-    merge_idnt_table();
-    return {cmpl_res, pr_result};
+    cmpl_stat = CmplStat(CmplStat::Ok, "Compiled successfully.");
+    pr_result = make_result();
+    return cmpl_stat;
   }
   if(inst_list.back().oper != Operator::set)
     inst_list.push_back(Instruction(Operator::print, {res_idnt}));
-  cmpl_res = CmplStat(CmplStat::Ok, "Compiled successfully.");
-  pr_result = PrResult::make_result(this);
-  merge_idnt_table();
-  return {cmpl_res, pr_result};
+  cmpl_stat = CmplStat(CmplStat::Ok, "Compiled successfully.");
+  pr_result = make_result();
+  return cmpl_stat;
+}
+
+CmplStat Parser::parse_stmt(Parser::ParseRange range) {
+  assert(range.first != range.second && "tokens cannot be empty.");
+  switch(hash_kw[*range.first]) {
+  case Hash::hash_cxpr("func"): {
+      auto tk = std::next(range.first);
+      if(!is_bracket_valid({tk, range.second})) return cmpl_stat;
+      #define EB(oper) Grammer::OPER_BIT[Operator::oper]
+      #define TOKENS_TO_OPERATOR_MAPPING(tkr, oper, eb) \
+      case Hash::hash_cxpr(tkr): { \
+          if(Grammer::is_invalid(expect_bits, Grammer::OPER_BIT[oper])) { \
+            Debug::console << "Invalid syntax detected!\n"; \
+            cmpl_stat = CmplStat(CmplStat::Failed, "Syntax Error: expected { ", expect_bits, "} , found ", tkr); \
+            return cmpl_stat; \
+          } \
+          expect_bits = eb; \
+          break; \
+        }
+      
+      bool func_name = true;
+      DT::exprsybit_t expect_bits = 1;
+      std::vector<Idnt> func_info;  // {name, para1, para2, ...}
+      FIP pframe = frame.enter_new_frame();
+      for(; tk != range.second; ++tk) {
+        switch(Hash::hash(*tk)) {
+          TOKENS_TO_OPERATOR_MAPPING("(", Operator::lparen, EB(null))
+          TOKENS_TO_OPERATOR_MAPPING(")", Operator::rparen, 0)
+          TOKENS_TO_OPERATOR_MAPPING(",", Operator::argsplit, EB(null))
+          default:
+            if(Grammer::is_invalid(expect_bits, 1)) {
+              cmpl_stat = CmplStat(CmplStat::Failed, "Syntax Error: expected { ", expect_bits, "} , found ", *tk);
+              return cmpl_stat;
+            }
+            if(String::is_number(*tk)) {
+              cmpl_stat = CmplStat(CmplStat::Failed, "Syntax Error: function parameter cannot be number");
+              return cmpl_stat;
+            }
+            if(func_name) {
+              func_info.push_back(Idnt::make_var(pframe.get_idnt_id(*tk), pframe.frame_id()));
+            } else {
+              func_info.push_back(Idnt::make_var(frame.get_idnt_id(*tk), frame.frame_id()));
+            }
+            expect_bits = EB(argsplit) | EB(rparen);
+        }
+        func_name = false;
+      }
+      inst_list.push_back(Instruction(BC::def, func_info));
+      #undef EB 
+      #undef TOKENS_TO_OPERATOR_MAPPING
+    }
+  case Hash::hash_cxpr("end"):
+    if(std::next(range.first) != range.second) {
+      cmpl_stat = CmplStat(CmplStat::Failed, "Syntax Error: end keyword cannot have any suffix");
+      return cmpl_stat;
+    }
+    inst_list.push_back(Instruction(BC::ret));
+    frame.back_to_parent();
+  default:
+    return parse_expr(range);
+  }
+  return cmpl_stat;
+}
+
+int Parser::frame_depth() {
+  return frame.frame_id();
+}
+
+std::pair<CmplStat, Parser::Result_Ref> Parser::parse(const Tokenizer::Result_T& tokens) {
+  cmpl_stat = parse_stmt({tokens.begin(), tokens.end()});
+  if(cmpl_stat.code == CmplStat::Ok) {
+    pr_result = make_result();
+    return {cmpl_stat, pr_result};
+  }
+  return {cmpl_stat, pr_result};
 }
 
 #ifdef DEBUG
@@ -454,16 +558,9 @@ std::ostream& operator<<(std::ostream& os, const Parser& p) {
     }
     os << "]\n";
   }
-  os << "cmpl_res:\n";
-  os << "[" << p.cmpl_res.code << "]: " << p.cmpl_res.msg << '\n';
-  os << "idnt_table:\n";
-  for(auto& [k, v] : p.idnt_table)
-    os << k << ": " << v << '\n';
-  os << "nidnt_table:\n";
-  for(auto& [k, v] : p.nidnt_table)
-    os << k << ": " << v << '\n';
-  os << "aval_idnt_id: " << p.aval_idnt_id << '\n';
-  os << "tmp_buffer.size(): " << p.tmp_buffer.size() << '\n';
+  os << "cmpl_stat:\n";
+  os << "[" << p.cmpl_stat.code << "]: " << p.cmpl_stat.msg << '\n';
+  os << p.global_frame << '\n';
   os << "[Parser END]";
   return os;
 }
@@ -471,12 +568,16 @@ std::ostream& operator<<(std::ostream& os, const Parser& p) {
 
 Compiler::Compiler() {}
 
+bool Compiler::has_unclosed_stmt() {
+  return parser.frame_depth() > 0;
+}
+
 std::pair<CmplStat, const Compiler::CmplResult&> Compiler::compile(const std::string& sline) {
   auto tokens = tokenizer.tokenize(sline);
   if(tokens.empty()) {
     Debug::console << "User input length is 0, stop at tokenization\n";
     auto cmpl_stat = CmplStat(CmplStat::Empty, "Empty line");
-    auto cmpl_res = CmplResult::make_result(nullptr);
+    auto cmpl_res = CmplResult();
     return {cmpl_stat, cmpl_res};
   }
   auto ret = parser.parse(tokens);

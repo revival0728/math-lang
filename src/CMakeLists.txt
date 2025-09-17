@@ -1,7 +1,12 @@
-add_library(MathLangInterpreter compiler.cpp runtime.cpp utils.cpp interpreter.cpp)
+add_subdirectory(runtime)
+
+configure_file(config.hpp.in config.hpp)
+
+add_library(MathLangInterpreter compiler.cpp utils.cpp interpreter.cpp)
+target_link_libraries(MathLangInterpreter Runtime)
+
 add_executable("math-lang" main.cpp)
 target_link_libraries("math-lang" MathLangInterpreter)
-configure_file(config.hpp.in config.hpp)
 target_compile_options("math-lang" PRIVATE -Wall)
 
 if(DEBUG)

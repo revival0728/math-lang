@@ -2,7 +2,7 @@
 #include "utils.hpp"
 #include <fstream>
 
-using namespace MathLangUtils;
+using namespace Utils;
 
 Interpreter::Interpreter() {}
 
@@ -10,12 +10,12 @@ std::string Interpreter::get_input(std::istream& is) {
   if(!hide_prefix) std::cout << input_prefix;
   std::string input;
   std::getline(is, input);
-  MathLangUtils::String::strip_self(input);
+ String::strip_self(input);
   return input;
 }
 
 template<class ...P> void Interpreter::println(const P... t) {
-  std::cout << MathLangUtils::String::bs(t...) << '\n';
+  std::cout << String::bs(t...) << '\n';
 }
 
 std::pair<int, std::string> Interpreter::exec_line(const std::string& sline) {
@@ -67,5 +67,8 @@ void Interpreter::exec_file(const std::string fn) {
         if(ok > 0) return;
     }
     ++ln;
+  }
+  if(compiler.has_unclosed_stmt()) {
+    println("Unclosed statement error: missing end keyword");
   }
 }

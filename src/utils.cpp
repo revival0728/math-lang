@@ -1,20 +1,29 @@
 #include "utils.hpp"
-#include "mathlib.hpp"
+#include "runtime/mathlib.hpp"
 #include <cassert>
 #include <cctype>
 #include <string>
 #include <stack>
 
-using namespace MathLangUtils;
+using namespace Utils;
 
-bool MathLangUtils::String::is_operator(const std::string& str) {
-  for(auto& oper : MathLangUtils::Grammer::ALL_OPER) {
+DT::exprsybit_t make_exprsybit(std::initializer_list<BC::Operator> opers) {
+  DT::exprsybit_t ret = 0;
+  for(auto& oper : opers) {
+    if(oper == BC::Operator::null) ret |= 1;
+    else ret |= Grammer::OPER_BIT[oper];
+  }
+  return ret;
+}
+
+bool Utils::String::is_operator(const std::string& str) {
+  for(auto& oper : Grammer::ALL_OPER) {
     if(oper == str) return true;
   }
   return false;
 }
 
-bool MathLangUtils::String::is_number(const std::string& str) {
+bool Utils::String::is_number(const std::string& str) {
   bool in_num = false;
   bool has_dot = false;
   bool has_e = false;
@@ -46,7 +55,7 @@ bool MathLangUtils::String::is_number(const std::string& str) {
   return false;
 }
 
-MathLangUtils::DT::number_t MathLangUtils::String::to_number(const std::string& str) {
+Utils::DT::number_t Utils::String::to_number(const std::string& str) {
   auto c_str = str.c_str();
   char *pos = nullptr;
   std::stack<DT::number_t> expo;
@@ -67,7 +76,7 @@ MathLangUtils::DT::number_t MathLangUtils::String::to_number(const std::string& 
   return ret;
 }
 
-MathLangUtils::DT::hash_t MathLangUtils::Hash::hash(const std::string& str) {
+Utils::DT::hash_t Utils::Hash::hash(const std::string& str) {
   constexpr DT::hash_t base1 = 17, base2 = 61, M = 1e9 + 7;
   DT::hash_t res1 = 0, res2 = 0;
   for(auto& c : str) {
@@ -79,7 +88,7 @@ MathLangUtils::DT::hash_t MathLangUtils::Hash::hash(const std::string& str) {
   return res1 ^ res2;
 }
 
-void MathLangUtils::String::strip_self(std::string& str) {
+void Utils::String::strip_self(std::string& str) {
   int i = 0;
   while(i < str.size() && std::isspace(str[i])) ++i;
   str.replace(str.cbegin(), str.cbegin() + i, "");
@@ -88,8 +97,8 @@ void MathLangUtils::String::strip_self(std::string& str) {
   str.replace(str.cbegin() + i + 1, str.cend(), "");
 }
 
-std::string MathLangUtils::String::strip(const std::string& str) {
+std::string Utils::String::strip(const std::string& str) {
   std::string ret = str;
-  MathLangUtils::String::strip_self(ret);
+  Utils::String::strip_self(ret);
   return ret;
 }

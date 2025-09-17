@@ -7,8 +7,8 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 option(DEBUG "Build with debug information" OFF)
 option(PORTABLE "Build portable version" OFF)
 option(BUILD_TESTS "Build tests" ON)
-
 include_directories(${PROJECT_BINARY_DIR}/src)
+
 add_subdirectory(src)
 
 if(BUILD_TESTS)

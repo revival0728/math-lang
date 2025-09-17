@@ -2,7 +2,7 @@
 #define INTERPRETER_HPP
 
 #include "compiler.hpp"
-#include "runtime.hpp"
+#include "runtime/runtime.hpp"
 #include "config.hpp"
 #include <string>
 #include <utility>

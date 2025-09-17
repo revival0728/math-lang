@@ -1,21 +1,21 @@
 #ifndef RUNTIME_HPP
 #define RUNTIME_HPP
 
+// TODO: Add user defined function support
+
 #include <vector>
 #include <string>
 #include <utility>
 #include <any>
-#include <iostream>
-#include "compiler.hpp"
-#include "utils.hpp"
+#include "../utils.hpp"
 
 class RtMemUnit {
   public:
-  using Idnt = Parser::Idnt;
-  using number_t = MathLangUtils::DT::number_t;
-  using number_p = MathLangUtils::DT::number_p;
-  using func_t = MathLangUtils::DT::func_t;
-  using func_p = MathLangUtils::DT::func_p;
+  using Idnt = Utils::BC::Idnt;
+  using number_t = Utils::DT::number_t;
+  using number_p = Utils::DT::number_p;
+  using func_t = Utils::DT::func_t;
+  using func_p = Utils::DT::func_p;
 
   protected:
   std::shared_ptr<std::any> mem;
@@ -32,11 +32,11 @@ class RtMemUnit {
 
 class Runtime {
   private:
-  using Idnt = Parser::Idnt;
-  using number_t = MathLangUtils::DT::number_t;
-  using number_p = MathLangUtils::DT::number_p;
-  using func_t = MathLangUtils::DT::func_t;
-  using func_p = MathLangUtils::DT::func_p;
+  using Idnt = Utils::BC::Idnt;
+  using number_t = Utils::DT::number_t;
+  using number_p = Utils::DT::number_p;
+  using func_t = Utils::DT::func_t;
+  using func_p = Utils::DT::func_p;
 
   public:
   struct RtResult {
@@ -53,7 +53,7 @@ class Runtime {
     RtResult(ExitCode _code, const std::string& _msg) : code(_code), msg(_msg) {}
     template<class ...P> RtResult(ExitCode _code, P... t) : 
       code(_code), 
-      msg(MathLangUtils::String::bs(t...)) {}
+      msg(Utils::String::bs(t...)) {}
     static RtResult make_null() { return RtResult(RtResult::Null, ""); }
     static RtResult make_corrupted_error() { return RtResult(RtResult::Error, "Corrupted bytecode instruction"); }
     static RtResult make_unknown_error() { return RtResult(RtResult::Error, "Unknown Error"); }
@@ -68,7 +68,7 @@ class Runtime {
   
   public:
   Runtime();
-  RtResult run(const Compiler::CmplResult&);
+  RtResult run(const Utils::Pipline::CmplResult&);
 
   #ifdef DEBUG
     friend std::ostream& operator<<(std::ostream&, const Runtime&);

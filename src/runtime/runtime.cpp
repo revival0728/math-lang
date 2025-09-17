@@ -2,7 +2,7 @@
 #include "mathlib.hpp"
 #include <typeinfo>
 
-using namespace MathLangUtils;
+using namespace Utils;
 
 RtMemUnit::RtMemUnit() { 
   mem = std::shared_ptr<std::any>();
@@ -131,8 +131,8 @@ std::pair<bool, const Runtime::func_p> Runtime::get_idnt_func(const Runtime::Idn
   return std::make_pair(false, func_p());
 }
 
-Runtime::RtResult Runtime::run(const Compiler::CmplResult& cmpl_res) {
-  using Operator = Parser::Operator;
+Runtime::RtResult Runtime::run(const Pipline::CmplResult& cmpl_res) {
+  using Operator = BC::Operator;
 
   rt_result = RtResult::make_null();
 
@@ -206,7 +206,7 @@ Runtime::RtResult Runtime::run(const Compiler::CmplResult& cmpl_res) {
           rt_result = RtResult(RtResult::UndefinedVar, "Cannot print an undefined value.");
         return rt_result;
       }
-      rt_result = RtResult(RtResult::Ok, MathLangUtils::String::to_string(*vi.second));
+      rt_result = RtResult(RtResult::Ok, Utils::String::to_string(*vi.second));
       break;
     }
     default:

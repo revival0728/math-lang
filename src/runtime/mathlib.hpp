@@ -1,11 +1,11 @@
 #ifndef MATHLIB_HPP
 #define MATHLIB_HPP
 
-#include "utils.hpp"
+#include "../utils.hpp"
 #include <cmath>
 
 namespace MathLangLib {
-  using namespace MathLangUtils::DT;
+  using namespace Utils::DT;
 
   #define MC_PI 3.14159265358979323846264338327950288
   #define MC_E  2.71828182845904523536028747135266250
@@ -16,10 +16,10 @@ namespace MathLangLib {
 
   #define WRAP_CPP_BUILTIN_FN_1(FN_NAME, _FN_NAME) \
     static number_t _FN_NAME(number_t v1) { return std::FN_NAME(v1); } \
-    static number_t FN_NAME(args_t& args) { return MathLangUtils::Function::call_func(_FN_NAME, args); }
+    static number_t FN_NAME(args_t& args) { return Utils::Function::call_func(_FN_NAME, args); }
   #define WRAP_CPP_BUILTIN_FN_2(FN_NAME, _FN_NAME) \
     static number_t _FN_NAME(number_t v1, number_t v2) { return std::FN_NAME(v1, v2); } \
-    static number_t FN_NAME(args_t& args) { return MathLangUtils::Function::call_func(_FN_NAME, args); }
+    static number_t FN_NAME(args_t& args) { return Utils::Function::call_func(_FN_NAME, args); }
 
   WRAP_CPP_BUILTIN_FN_1(cos, _cos)
   WRAP_CPP_BUILTIN_FN_1(sin, _sin)
