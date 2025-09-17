@@ -7,7 +7,6 @@
 #include <utility>
 #include <deque>
 #include <cctype>
-#include <variant>
 #include "utils.hpp"
 
 class Tokenizer {
@@ -50,56 +49,15 @@ struct CmplStat {
 
 class Parser {
   public:
-  struct CalcStep {
-    // be aware of the rank of operators
-    enum Operator {
-      // actuall operator
-      set,
-      plus,
-      multiply,
-      minus,
-      divide,
-      lparen,
-      rparen,
-      argsplit,
-
-      // virtual operator
-      func,
-      print,
-      null,
-    } oper;
-    struct Idnt {
-      enum Type { Raw, Var, Func, PreValue, None } idnt_type;
-      std::variant<int, MathLangUtils::DT::number_t> idnt_data;
-      Idnt() : idnt_type(None) {}
-      template<class T> Idnt(Type _idnt_type, const T& _idnt_data) :
-        idnt_type(_idnt_type), 
-        idnt_data(_idnt_data) {}
-      int& idnt_id() { return std::get<0>(idnt_data); }
-      MathLangUtils::DT::number_t& raw_value() { return std::get<1>(idnt_data); }
-      int idnt_id_const() const { return std::get<0>(idnt_data); }
-      MathLangUtils::DT::number_t raw_value_const() const { return std::get<1>(idnt_data); }
-      static Idnt make_raw(MathLangUtils::DT::number_t raw_value) { return Idnt(Raw, raw_value); }
-      static Idnt make_var(int idnt_id) { return Idnt(Var, idnt_id); }
-      static Idnt make_func(int idnt_id) { return Idnt(Func, idnt_id); }
-      static Idnt make_pre_value() { return Idnt(PreValue, -1); }
-      static Idnt make_none() { return Idnt(None, -1); }
-    };
-    // For Operator::func: idnts stores in reverse order
-    //  e.g. [arg_2, arg_1, arg_0, func_idnt]
-    std::vector<Idnt> idnts;
-    CalcStep() : oper(null), idnts({}) {}
-    CalcStep(Operator _oper, const std::vector<Idnt>& _idnts) : oper(_oper), idnts(_idnts) {}
-  };
   struct PrResult {
     std::size_t idnt_count;
-    std::vector<CalcStep> calc_list;
+    MathLangUtils::BC::InstList inst_list;
     std::unordered_map<std::string, int> nidnt_table;
     static PrResult make_result(const Parser *pp) {
       PrResult ret;
       if(!pp) return ret;
       ret.idnt_count = pp->aval_idnt_id;
-      ret.calc_list = pp->calc_list;
+      ret.inst_list = pp->inst_list;
       ret.nidnt_table = pp->nidnt_table;
       return ret;
     };
@@ -107,10 +65,15 @@ class Parser {
   using Result_T = PrResult;
   using Result_Ref = Result_T&;
 
+  using Instruction = MathLangUtils::BC::Instruction;
+  using InstList = MathLangUtils::BC::InstList;
+  using Operator = MathLangUtils::BC::Operator;
+  using Idnt = MathLangUtils::BC::Idnt;
+
   protected:
   std::unordered_map<std::string, int> hash_oper;
   CmplStat cmpl_res;
-  std::vector<CalcStep> calc_list;
+  InstList inst_list;
   std::unordered_map<std::string, int> idnt_table;
   std::unordered_map<std::string, int> nidnt_table;  // new idnt table
   std::vector<int> tmp_buffer;  // temporary buffer during calculating
@@ -131,14 +94,14 @@ class Parser {
   void free_tmp_buffer();
 
   // store Idnt::PreValue to a temp memory
-  //  :add CalcStep(Operator::set, {TEMP, PreValue}) to calc_list
-  //  :only modifies calc_list
+  //  :add CalcStep(Operator::set, {TEMP, PreValue}) to inst_list
+  //  :only modifies inst_list
   // @return temp buffer (Idnt)
-  CalcStep::Idnt store_pre_value();  
+  Idnt store_pre_value();  
 
   private:
   // Shunting Yard Algorithm
-  std::pair<bool, CalcStep::Idnt> sy_algo(std::deque<CalcStep::Idnt>&, std::deque<CalcStep::Operator>&);
+  std::pair<bool, Idnt> sy_algo(std::deque<Idnt>&, std::deque<Operator>&);
 
   public:
   Parser();

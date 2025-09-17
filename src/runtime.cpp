@@ -132,7 +132,7 @@ std::pair<bool, const Runtime::func_p> Runtime::get_idnt_func(const Runtime::Idn
 }
 
 Runtime::RtResult Runtime::run(const Compiler::CmplResult& cmpl_res) {
-  using Operator = Parser::CalcStep::Operator;
+  using Operator = Parser::Operator;
 
   rt_result = RtResult::make_null();
 
@@ -152,7 +152,7 @@ Runtime::RtResult Runtime::run(const Compiler::CmplResult& cmpl_res) {
     }
   }
 
-  for(auto& in : cmpl_res.calc_list) {
+  for(auto& in : cmpl_res.inst_list) {
     if(in.oper < Grammer::ALL_OPER_NAMES_LEN) {
       Debug::console << "Runtime: handling [" << Grammer::ALL_OPER_NAMES[in.oper] << "] instruction\n";
     }
@@ -222,7 +222,7 @@ Runtime::RtResult Runtime::run(const Compiler::CmplResult& cmpl_res) {
 
 #ifdef DEBUG
 std::ostream& operator<<(std::ostream& os, const Runtime& rt) {
-  using Idnt = Parser::CalcStep::Idnt;
+  using Idnt = Parser::Idnt;
 
   os << "[Runtime]:\n";
   os << "rt_result:\n";

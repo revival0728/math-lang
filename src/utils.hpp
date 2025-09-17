@@ -22,6 +22,7 @@ namespace MathLangUtils {
     };
     static Console console;
   }
+
   namespace DT {
     using number_t = double;
     using number_p = std::shared_ptr<number_t>;
@@ -54,6 +55,53 @@ namespace MathLangUtils {
     constexpr std::size_t ALL_OPER_NAMES_LEN = sizeof(ALL_OPER_NAMES) / sizeof(std::string);
     static_assert(ALL_OPER_LEN + 1 == OPER_RANK_LEN, "Rank count must equals to Operator count");
     static_assert(ALL_OPER_LEN + 3 == ALL_OPER_NAMES_LEN, "Operator Name count must equals to Full Operator count");
+  }
+
+  namespace BC {  // ByteCode
+    // be aware of the rank of operators
+    enum Operator {
+      // actuall operator
+      set,
+      plus,
+      multiply,
+      minus,
+      divide,
+      lparen,
+      rparen,
+      argsplit,
+
+      // virtual operator
+      func,
+      print,
+      null,
+    };
+    struct Idnt {
+      enum Type { Raw, Var, Func, PreValue, None } idnt_type;
+      std::variant<int, MathLangUtils::DT::number_t> idnt_data;
+      Idnt() : idnt_type(None) {}
+      template<class T> Idnt(Type _idnt_type, const T& _idnt_data) :
+        idnt_type(_idnt_type), 
+        idnt_data(_idnt_data) {}
+      int& idnt_id() { return std::get<0>(idnt_data); }
+      MathLangUtils::DT::number_t& raw_value() { return std::get<1>(idnt_data); }
+      int idnt_id_const() const { return std::get<0>(idnt_data); }
+      MathLangUtils::DT::number_t raw_value_const() const { return std::get<1>(idnt_data); }
+      static Idnt make_raw(MathLangUtils::DT::number_t raw_value) { return Idnt(Raw, raw_value); }
+      static Idnt make_var(int idnt_id) { return Idnt(Var, idnt_id); }
+      static Idnt make_func(int idnt_id) { return Idnt(Func, idnt_id); }
+      static Idnt make_pre_value() { return Idnt(PreValue, -1); }
+      static Idnt make_none() { return Idnt(None, -1); }
+    };
+    struct Instruction {
+      Operator oper;
+      // For Operator::func: idnts stores in reverse order
+      //  e.g. [arg_2, arg_1, arg_0, func_idnt]
+      std::vector<Idnt> idnts;
+      Instruction() : oper(null), idnts({}) {}
+      Instruction(Operator _oper, const std::vector<Idnt>& _idnts) : oper(_oper), idnts(_idnts) {}
+    };
+
+    using InstList = std::vector<Instruction>;
   }
 
   namespace Hash {

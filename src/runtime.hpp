@@ -11,7 +11,7 @@
 
 class RtMemUnit {
   public:
-  using Idnt = Parser::CalcStep::Idnt;
+  using Idnt = Parser::Idnt;
   using number_t = MathLangUtils::DT::number_t;
   using number_p = MathLangUtils::DT::number_p;
   using func_t = MathLangUtils::DT::func_t;
@@ -32,7 +32,7 @@ class RtMemUnit {
 
 class Runtime {
   private:
-  using Idnt = Parser::CalcStep::Idnt;
+  using Idnt = Parser::Idnt;
   using number_t = MathLangUtils::DT::number_t;
   using number_p = MathLangUtils::DT::number_p;
   using func_t = MathLangUtils::DT::func_t;

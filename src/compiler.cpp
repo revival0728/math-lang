@@ -95,7 +95,7 @@ std::ostream& operator<<(std::ostream& os, const Tokenizer& tokenizer) {
 
 // Parser
 Parser::Parser() {
-  calc_list = std::vector<CalcStep>();
+  inst_list = InstList();
   cmpl_res = CmplStat(CmplStat::Blank, "");
   hash_oper = std::unordered_map<std::string, int>();
   for(auto& oper : Grammer::ALL_OPER) {
@@ -109,7 +109,7 @@ Parser::Parser() {
 }
 
 Parser::Result_Ref Parser::get_parse_result() {
-  assert(calc_list.size() > 0 && "[math-lang Parser::get_parse_result()]: Error");
+  assert(inst_list.size() > 0 && "[math-lang Parser::get_parse_result()]: Error");
   pr_result = PrResult::make_result(this);
   return pr_result;
 }
@@ -146,19 +146,15 @@ void Parser::free_tmp_buffer() {
   aval_tmp_buffer_index = 0;
 }
 
-Parser::CalcStep::Idnt Parser::store_pre_value() {
-  using Idnt = Parser::CalcStep::Idnt;
-  using Operator = Parser::CalcStep::Operator;
+Parser::Idnt Parser::store_pre_value() {
   Idnt temp = Idnt::make_var(apply_tmp_buffer());
-  calc_list.push_back(CalcStep(Operator::set, {temp, Idnt::make_pre_value()}));
+  inst_list.push_back(Instruction(Operator::set, {temp, Idnt::make_pre_value()}));
   return temp;
 }
 
-std::pair<bool, Parser::CalcStep::Idnt> Parser::sy_algo(
-  std::deque<Parser::CalcStep::Idnt>& idnts, 
-  std::deque<Parser::CalcStep::Operator>& opers) {
-  using Idnt = Parser::CalcStep::Idnt;
-  using Operator = Parser::CalcStep::Operator;
+std::pair<bool, Parser::Idnt> Parser::sy_algo(
+  std::deque<Parser::Idnt>& idnts, 
+  std::deque<Parser::Operator>& opers) {
 
   Debug::console << "sy_algo()\n";
   int in_func = 0;
@@ -209,7 +205,7 @@ std::pair<bool, Parser::CalcStep::Idnt> Parser::sy_algo(
       if(!res.first) return {false, Idnt()};
       if(res.second.idnt_type == Idnt::PreValue) {
         Idnt tmp_var = Idnt::make_var(new_idnt_id());
-        calc_list.push_back(CalcStep(Operator::set, {tmp_var, Idnt::make_pre_value()}));
+        inst_list.push_back(Instruction(Operator::set, {tmp_var, Idnt::make_pre_value()}));
         idnts.push_back(tmp_var);
       } else {
         idnts.push_back(res.second);
@@ -269,7 +265,7 @@ std::pair<bool, Parser::CalcStep::Idnt> Parser::sy_algo(
         idnts.push_back(store_pre_value());
       }
       arg_list.push_back(func_idnt);
-      calc_list.push_back(CalcStep(top_oper, arg_list));
+      inst_list.push_back(Instruction(top_oper, arg_list));
       idnts.push_back(Idnt::make_pre_value());
       in_func = 0;
       POP_TMP_TO_ORIGIN_DEQ();
@@ -289,7 +285,7 @@ std::pair<bool, Parser::CalcStep::Idnt> Parser::sy_algo(
     } else {
       Idnt f = idnts.back(); idnts.pop_back();
       Idnt s = idnts.back(); idnts.pop_back();
-      calc_list.push_back(CalcStep(top_oper, {s, f}));
+      inst_list.push_back(Instruction(top_oper, {s, f}));
       idnts.emplace_back(Idnt::make_pre_value());
       Debug::console << "bin oeprs\n";
       POP_TMP_TO_ORIGIN_DEQ();
@@ -302,13 +298,9 @@ std::pair<bool, Parser::CalcStep::Idnt> Parser::sy_algo(
 }
 
 std::pair<CmplStat, Parser::Result_Ref> Parser::parse(const Tokenizer::Result_T& tokens) {
-  using Idnt = Parser::CalcStep::Idnt;
-  using Operator = Parser::CalcStep::Operator;
-  using namespace MathLangUtils;
-
   assert(!tokens.empty() && "tokens cannot be empty.");
   Debug::console << "parse()\n";
-  calc_list.clear();
+  inst_list.clear();
 
   // check is bracket valid
   {
@@ -415,15 +407,15 @@ std::pair<CmplStat, Parser::Result_Ref> Parser::parse(const Tokenizer::Result_T&
   assert(idnts.empty());
   free_tmp_buffer();
   if(!ok) return {cmpl_res, pr_result};
-  if(calc_list.empty()) {
-    calc_list.push_back(CalcStep(Operator::print, {res_idnt}));
+  if(inst_list.empty()) {
+    inst_list.push_back(Instruction(Operator::print, {res_idnt}));
     cmpl_res = CmplStat(CmplStat::Ok, "Compiled successfully.");
     pr_result = PrResult::make_result(this);
     merge_idnt_table();
     return {cmpl_res, pr_result};
   }
-  if(calc_list.back().oper != Operator::set)
-    calc_list.push_back(CalcStep(Operator::print, {res_idnt}));
+  if(inst_list.back().oper != Operator::set)
+    inst_list.push_back(Instruction(Operator::print, {res_idnt}));
   cmpl_res = CmplStat(CmplStat::Ok, "Compiled successfully.");
   pr_result = PrResult::make_result(this);
   merge_idnt_table();
@@ -432,14 +424,14 @@ std::pair<CmplStat, Parser::Result_Ref> Parser::parse(const Tokenizer::Result_T&
 
 #ifdef DEBUG
 std::ostream& operator<<(std::ostream& os, const Parser& p) {
-  using Idnt = Parser::CalcStep::Idnt;
+  using Idnt = Parser::Idnt;
 
   os << "[Parser]:\n";
   os << "hash_oper:\n";
   for(auto& [k, v] : p.hash_oper)
     os << k << ": " << v << '\n';
-  os << "calc_list:\n";
-  for(auto& i : p.calc_list) {
+  os << "inst_list:\n";
+  for(auto& i : p.inst_list) {
     os << Grammer::ALL_OPER_NAMES[i.oper] << " [" ;
     for(auto& j : i.idnts) {
       switch(j.idnt_type) {
