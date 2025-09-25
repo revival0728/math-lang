@@ -4,49 +4,6 @@
 
 using namespace Utils;
 
-RtMemUnit::RtMemUnit() { 
-  mem = std::shared_ptr<std::any>();
-}
-
-template<class AnyT> std::pair<bool, const std::shared_ptr<AnyT>> RtMemUnit::get() const {
-  if(!mem)
-    return std::make_pair(false, std::shared_ptr<AnyT>());
-  if(!mem->has_value())
-    return std::make_pair(false, std::shared_ptr<AnyT>());
-  if(mem->type() == typeid(AnyT)) {
-    return std::make_pair(
-      true, 
-      std::shared_ptr<AnyT>(mem, std::any_cast<AnyT>(mem.get()))
-    );
-  }
-  return std::make_pair(false, std::shared_ptr<AnyT>());
-}
-
-template<class AnyT> void RtMemUnit::set(const AnyT& value) {
-  mem.reset(new std::any(value));
-}
-
-#ifdef DEBUG
-std::ostream& operator<<(std::ostream& os, const RtMemUnit& rtm) {
-  using number_t = RtMemUnit::number_t;
-  using func_t = RtMemUnit::func_t;
-
-  if(!rtm.mem) {
-    return os << "nullptr";
-  }
-  if(!rtm.mem->has_value()) {
-    return os << "Null";
-  }
-  if(rtm.mem->type() == typeid(number_t)) {
-    return os << "Var->" << *(rtm.get<number_t>().second);
-  }
-  if(rtm.mem->type() == typeid(func_t)) {
-    return os << "Func->" << (rtm.get<func_t>().second)->target<DT::raw_func_p>();
-  }
-  return os;
-}
-#endif
-
 Runtime::Runtime() {
   pre_value = Idnt::make_pre_value();
   mem = std::vector<RtMemUnit>();

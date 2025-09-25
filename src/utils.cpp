@@ -7,6 +7,10 @@
 
 using namespace Utils;
 
+bool Utils::Grammer::is_invalid(DT::exprsybit_t expect, DT::exprsybit_t found) { 
+  return ((expect | found) ^ expect) != 0; 
+}
+
 DT::exprsybit_t make_exprsybit(std::initializer_list<BC::Operator> opers) {
   DT::exprsybit_t ret = 0;
   for(auto& oper : opers) {

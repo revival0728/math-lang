@@ -57,7 +57,8 @@
     "typeindex": "cpp",
     "fstream": "cpp",
     "iomanip": "cpp",
-    "*.in": "cpp"
+    "*.in": "cpp",
+    "cstddef": "cpp"
   },
   "cmake.sourceDirectory": "/Users/fuhsing/Repository/math-lang"
 }
