@@ -1,4 +1,5 @@
 #include "runtime_base.hpp"
+#include <cassert>
 
 Object::Object() {
   data = nullptr;
@@ -8,27 +9,18 @@ Object::Object(Object::data_p _data) {
   data = _data;
 }
 
-template<class T> std::shared_ptr<T> Object::cast_data() const {
-  assert(data->type() == typeid(T));
-  return std::shared_ptr<T>(shared_from_this(), std::any_cast<T>(data.get())); 
-}
-
-template<class ObjT> ObjPtr<ObjT> Object::cast_self() const noexcept {
-  auto st = shared_from_this();
-  return ObjPtr<ObjT>(st, dynamic_cast<ObjT*>(st.get()));
-}
-
-ObjPtr<Object> Object::to_object() const {
+ObjPtr<Object> Object::to_object() {
   return cast_self<Object>();
 }
 
-ObjPtr<Object> Object::to_ptr() const {
+ObjPtr<Object> Object::to_ptr() const noexcept {
   return std::make_shared<Object>(data);
 }
 
 
-Callable::Callable() {
+Callable::Callable(int __arg_cnt) {
   data.reset(new std::any(InstList()));
+  _arg_cnt = __arg_cnt;
 }
 
 Callable::Callable(const Callable::InstList& inst_list) {
@@ -39,11 +31,21 @@ bool Callable::is_valid() const {
   return data->type() == typeid(InstList);
 }
 
-void Callable::call(Frame& frame) {
+void Callable::call(Frame& frame) const {
   auto inst_list = cast_data<InstList>();
+  assert(inst_list->back().oper == Utils::BC::ret);
   for(auto& inst : *inst_list) {
-    ;
+    executor(frame, inst);
   }
+}
+
+void Callable::add_inst(const Instruction& inst) {
+  auto inst_list = cast_data<InstList>();
+  inst_list->push_back(inst);
+}
+
+int Callable::arg_cnt() const noexcept {
+  return _arg_cnt;
 }
 
 

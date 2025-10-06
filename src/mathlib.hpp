@@ -1,7 +1,8 @@
 #ifndef MATHLIB_HPP
 #define MATHLIB_HPP
 
-#include "../utils.hpp"
+#include "utils/dt.hpp"
+#include "utils/function.hpp"
 #include <cmath>
 
 namespace MathLangLib {

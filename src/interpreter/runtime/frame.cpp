@@ -6,6 +6,7 @@ Frame::Frame() {
   frame->frame_id = 0;
   frame->mtable = std::make_shared<MemTable>();
   frame->rt_result = std::make_shared<RtResult>(RtResult::make_null());
+  frame->fstate = FState();
   frame->pframe = nullptr;
 }
 
@@ -52,7 +53,7 @@ Frame::SafeRet<MemUnit> Frame::get_munit(const std::size_t frame_id, const int m
   return get_frame(frame_id).get_mtable()->get_munit(m_index);
 }
 
-const Frame::RtResult& Frame::rt_result() {
+Frame::RtResult const& Frame::rt_result() {
   return *frame->rt_result;
 }
 
@@ -60,6 +61,10 @@ void Frame::set_rt_result(const RtResult& result) {
   *frame->rt_result = result;
 }
 
-template<class ...P> void Frame::emplace_rt_result(RtResult::ExitCode code, P... t) {
-  set_rt_result(RtResult(code, t...));
+Frame::FState Frame::get_state() const noexcept {
+  return frame->fstate;
+}
+
+void Frame::set_state(FState::State state, int decl_id) {
+  frame->fstate = FState(state, decl_id);
 }

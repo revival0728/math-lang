@@ -1,6 +1,6 @@
 #include <cassert>
 #include "testlib.hpp"
-#include "../src/interpreter.hpp"
+#include "../src/interpreter/interpreter.hpp"
 
 using namespace MathLangTestLib;
 

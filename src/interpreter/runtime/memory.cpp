@@ -1,16 +1,8 @@
 #include "runtime_base.hpp"
+#include <cassert>
 
 MemUnit::MemUnit() { 
   obj_ptr = ObjPtr<Object>();
-}
-
-template<class ObjT> const ObjPtr<ObjT> MemUnit::get() const {
-  assert(obj_ptr != nullptr);
-  return obj_ptr->cast_self<ObjT>();
-}
-
-template<class ObjT> void MemUnit::set(const ObjT& value) noexcept {
-  obj_ptr = value.to_ptr();
 }
 
 #ifdef DEBUG

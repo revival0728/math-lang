@@ -1,5 +1,5 @@
 #include "interpreter.hpp"
-#include "utils.hpp"
+#include "utils/utils.hpp"
 #include <fstream>
 
 using namespace Utils;
@@ -29,7 +29,7 @@ std::pair<int, std::string> Interpreter::exec_line(const std::string& sline) {
   }
   auto rt_result = runtime.run(cmpl_res);
   Debug::console << runtime << '\n';
-  if(rt_result.code != Runtime::RtResult::Ok) {
+  if(rt_result.code != Utils::Pipline::RtResult::Ok) {
     return {
       2, 
       String::bs(CLI::RT_RESULT_CODE[rt_result.code], ": ", rt_result.msg)

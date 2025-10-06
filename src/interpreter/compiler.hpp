@@ -9,7 +9,7 @@
 #include <cctype>
 #include <memory>
 #include <forward_list>
-#include "utils.hpp"
+#include "utils/utils.hpp"
 
 class Tokenizer {
   public:

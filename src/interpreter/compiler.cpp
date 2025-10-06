@@ -1,6 +1,7 @@
 #include <cassert>
 #include "compiler.hpp"
-#include "utils.hpp"
+#include "mathlib.hpp"
+#include "utils/utils.hpp"
 
 using namespace Utils;
 
@@ -93,8 +94,8 @@ std::ostream& operator<<(std::ostream& os, const Tokenizer& tokenizer) {
 #endif
 
 FIP::FIP() {
-  fptr->frame_id = 0;
   fptr = std::make_shared<__FIP>();
+  fptr->frame_id = 0;
   fptr->idnt_table = std::unordered_map<std::string, int>();
   fptr->tmp_buffer = std::vector<int>();
   fptr->aval_idnt_id = 0;
@@ -318,7 +319,7 @@ std::pair<bool, Parser::Idnt> Parser::sy_algo(
       sub_opers.push_front(top_oper);
       continue;
     }
-    if(top_oper == Operator::func) {
+    if(top_oper == Operator::func || top_oper == Operator::callbf) {
       assert(!idnts.empty());
       std::vector<Idnt> arg_list;
       for(; idnts.back().idnt_type != Idnt::Func; idnts.pop_back()) {
@@ -331,7 +332,11 @@ std::pair<bool, Parser::Idnt> Parser::sy_algo(
       }
       arg_list.push_back(func_idnt);
       inst_list.push_back(Instruction(top_oper, arg_list));
-      idnts.push_back(Idnt::make_pre_value(frame.frame_id()));
+      // ???
+      // idnts.push_back(Idnt::make_pre_value(frame.frame_id()));
+      if(top_oper == Operator::func) {
+        frame.enter_new_frame();
+      }
       in_func = 0;
       POP_TMP_TO_ORIGIN_DEQ();
       continue;
@@ -418,7 +423,11 @@ CmplStat Parser::parse_expr(Parser::ParseRange range) {
       }
       // function exists in both Idnt and Operator
       if(std::next(tk) != range.second && *std::next(tk) == "(") {
-        idnts.push_back(Idnt::make_func(frame.get_idnt_id(*tk), frame.frame_id()));
+        if(MathLangLib::builtin_fn.find(*tk) != MathLangLib::builtin_fn.end()) {
+          idnts.push_back(Idnt::make_str(*tk));
+        } else {
+          idnts.push_back(Idnt::make_func(frame.get_idnt_id(*tk), frame.frame_id()));
+        }
         opers.push_back(Operator::func);
         expect_bits = 0b000001000;
         break;

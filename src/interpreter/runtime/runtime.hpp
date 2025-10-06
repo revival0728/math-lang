@@ -4,11 +4,9 @@
 // TODO: Add user defined function support
 // TODO: update Runtime declaration and implementation
 
-#include <vector>
-#include <string>
 #include <utility>
-#include <any>
-#include "../utils.hpp"
+#include "utils/utils.hpp"
+#include "runtime_base.hpp"
 
 class Runtime {
   private:
@@ -22,11 +20,7 @@ class Runtime {
   using RtResult = Utils::Pipline::RtResult;
 
   protected:
-  Idnt pre_value;
-  std::vector<MemUnit> mem;
-  bool has_idnt(int);
-  std::pair<bool, const number_p> get_idnt_value(const Idnt&);
-  std::pair<bool, const func_p> get_idnt_func(const Idnt&);
+  Frame frame;
   
   public:
   Runtime();
