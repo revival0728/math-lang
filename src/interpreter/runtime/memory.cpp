@@ -2,7 +2,7 @@
 #include <cassert>
 
 MemUnit::MemUnit() { 
-  obj_ptr = ObjPtr<Object>();
+  obj_ptr = ObjPtr<Object>(Null().to_ptr());
 }
 
 #ifdef DEBUG
@@ -40,4 +40,8 @@ MemTable::SafeRet<MemUnit&> MemTable::get_munit(const int index) {
 MemUnit& MemTable::operator[](const int index) noexcept {
   if(index == -1) return pre_value;
   return table[index];
+}
+
+void MemTable::resize(int size) noexcept {
+  table.resize(size);
 }

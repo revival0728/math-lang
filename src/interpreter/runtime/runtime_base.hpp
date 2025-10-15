@@ -6,6 +6,8 @@
 #include <memory>
 #include <any>
 
+#include <iostream>
+
 class Frame;
 void executor(Frame&, const Utils::BC::Instruction&);
 
@@ -47,6 +49,7 @@ class MemTable {
   // index == -1 -> pre_value;
   SafeRet<MemUnit&> get_munit(const int index);
   MemUnit& operator[](const int index) noexcept;
+  void resize(int size) noexcept;
 };
 
 class Frame {
@@ -101,7 +104,7 @@ class Frame {
   void set_state(FState::State, int def_id);
 };
 
-class Object : std::enable_shared_from_this<Object> {
+class Object : public std::enable_shared_from_this<Object> {
   public:
   using data_p = std::shared_ptr<std::any>;
   template<class T> using SafeRet = Utils::DT::SafeRet<T>;
@@ -125,13 +128,13 @@ class Object : std::enable_shared_from_this<Object> {
   //
   // return a new object holds by shared_ptr
   ObjPtr<Object> to_ptr() const noexcept;
-  virtual bool is_valid() const { return true; };
+  virtual bool is_valid() const { std::cerr<<"Object.is_valid()\n"; return true; };
 };
 
 class Null : public Object {
   public:
   Null() : Object() {}
-  bool is_valid() const override { return data == nullptr; }
+  bool is_valid() const override { std::cerr<<"Null.is_valid()\n"; return data == nullptr; }
 };
 
 class Callable : public Object {
@@ -198,12 +201,12 @@ template<class T> std::shared_ptr<T const> Object::cast_data() const {
 
 template<class ObjT> ObjPtr<ObjT> Object::cast_self() noexcept {
   auto st = shared_from_this();
-  return ObjPtr<ObjT>(st, dynamic_cast<ObjT*>(st.get()));
+  return ObjPtr<ObjT>(st, static_cast<ObjT*>(st.get()));
 }
 
 template<class ObjT> ObjPtr<ObjT const> Object::cast_self() const noexcept {
   auto st = shared_from_this();
-  return ObjPtr<ObjT const>(st, dynamic_cast<ObjT *const>(st.get()));
+  return ObjPtr<ObjT const>(st, static_cast<ObjT *const>(st.get()));
 }
 
 #endif

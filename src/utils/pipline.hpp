@@ -9,6 +9,7 @@ namespace Utils {
   namespace Pipline {
     struct PrResult {
       Utils::BC::InstList inst_list;
+      int mtable_size;
     };
     using CmplResult = PrResult;
 

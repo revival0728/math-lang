@@ -7,6 +7,7 @@ using namespace Utils;
 Runtime::Runtime() {}
 
 Runtime::RtResult Runtime::run(const Pipline::CmplResult& cmpl_res) {
+  frame.get_mtable()->resize(cmpl_res.mtable_size);
   for(auto& inst : cmpl_res.inst_list) {
     executor(frame, inst);
     if(frame.rt_result().code != RtResult::Ok) {

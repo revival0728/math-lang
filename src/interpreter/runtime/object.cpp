@@ -13,6 +13,11 @@ ObjPtr<Object> Object::to_object() {
   return cast_self<Object>();
 }
 
+ObjPtr<Object const> Object::to_object() const {
+  return cast_self<Object const>();
+}
+
+// TODO: Remove to_ptr(), it causes unexpected behavior. Consider adding make_objptr<>(), and use make_objptr<>().to_object() instead.
 ObjPtr<Object> Object::to_ptr() const noexcept {
   return std::make_shared<Object>(data);
 }

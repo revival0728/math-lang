@@ -1,9 +1,71 @@
 #include "mathlib.hpp"
 #include "runtime_base.hpp"
+#include "utils/bc.hpp"
+#include "utils/dt.hpp"
 #include <cassert>
 #include <vector>
 
 // TODO: consider raw_value in Idnt
+
+Utils::DT::SafeRet<ObjPtr<Object> const> get_value(Frame& frame, const Utils::BC::Idnt& idnt) {
+  using Idnt = Utils::BC::Idnt;
+  using SafeRet = Utils::DT::SafeRet<ObjPtr<Object>>;
+  using RtResult = Frame::RtResult;
+
+  assert(idnt.idnt_type != Idnt::Str);  // Idnt::Str are special idnt for builtin_fn
+  switch(idnt.idnt_type) {
+  case Idnt::Raw:
+    return SafeRet(true, Number(idnt.raw_value_const()).to_ptr());
+  case Idnt::Var: {
+    auto [ok, m] = frame.get_munit(idnt.frame_id, idnt.idnt_id_const());
+    if(!ok) {
+      frame.set_rt_result(RtResult::make_corrupted_error());
+      return SafeRet(false, nullptr);
+    }
+    return SafeRet(true, m.get<Object>());
+  }
+  case Idnt::Func: {
+    auto [ok, m] = frame.get_munit(idnt.frame_id, idnt.idnt_id_const());
+    if(!ok) {
+      frame.set_rt_result(RtResult::make_corrupted_error());
+      return SafeRet(false, nullptr);
+    }
+    return SafeRet(true, m.get<Object>());
+  }
+  case Idnt::PreValue: {
+    auto [ok, m] = frame.get_munit(idnt.frame_id, -1);
+    if(!ok) {
+      frame.set_rt_result(RtResult::make_corrupted_error());
+      return SafeRet(false, nullptr);
+    }
+    return SafeRet(true, m.get<Object>());
+  }
+  case Idnt::Str:
+    frame.set_rt_result(RtResult::make_corrupted_error());
+    return SafeRet(false, nullptr);
+  case Idnt::None:
+    frame.set_rt_result(RtResult::make_corrupted_error());
+    return SafeRet(false, nullptr);
+  }
+}
+
+Utils::DT::SafeRet<ObjPtr<Object> const> get_variable(Frame& frame, const Utils::BC::Idnt& idnt) {
+  using Idnt = Utils::BC::Idnt;
+  using SafeRet = Utils::DT::SafeRet<ObjPtr<Object>>;
+  using RtResult = Frame::RtResult;
+
+  if(idnt.idnt_type == Idnt::Var || idnt.idnt_type == Idnt::Func) {
+    auto [ok, m] = frame.get_munit(idnt.frame_id, idnt.idnt_id_const());
+    if(!ok) {
+      frame.set_rt_result(RtResult::make_corrupted_error());
+      return SafeRet(false, nullptr);
+    }
+    return SafeRet(true, m.get<Object>());
+  }
+  frame.emplace_rt_result(RtResult::UndefinedVar, "Cannot find an undefined variable (idnt_id: ", idnt.idnt_id_const(), ").",
+                                                        "This may caused by trying to get an undefined variable or assigning value to a raw number.");
+  return SafeRet(false, nullptr);
+}
 
 void executor(Frame& frame, const Utils::BC::Instruction& inst) {
   using namespace Utils;
@@ -33,14 +95,15 @@ void executor(Frame& frame, const Utils::BC::Instruction& inst) {
   switch(inst.oper) {
   case Operator::set: {
     Idnt dest = inst.idnts[0], source = inst.idnts[1];
-    auto [vs_ok, m_vs] = frame.get_munit(source.frame_id, source.idnt_id());
+    auto [vs_ok, vs] = get_value(frame, source);
     if(!vs_ok) {
       frame.set_rt_result(RtResult::make_corrupted_error());
       return;
     }
-    if(m_vs.get<Null>()->is_valid()) {
-      if(frame.rt_result().code == RtResult::UndefinedVar)
-        frame.emplace_rt_result(RtResult::UndefinedVar, "Cannot assign an undefined value to a variable.");
+    auto null_vs = vs->cast_self<Null>();
+    auto is_null = null_vs->is_valid();
+    if(vs->cast_self<Null>()->is_valid()) {
+      frame.emplace_rt_result(RtResult::UndefinedVar, "Cannot assign an undefined value to a variable.");
       return;
     }
     auto [vd_ok, m_vd] = frame.get_munit(dest.frame_id, dest.idnt_id());
@@ -48,17 +111,17 @@ void executor(Frame& frame, const Utils::BC::Instruction& inst) {
       frame.set_rt_result(RtResult::make_corrupted_error());
       return;
     }
-    m_vd.set(m_vs.get<Object>());
+    m_vd.set(vs);
     break;
   }
   #define HANDLE_BIN_INST(INST_T, OPER) \
     case INST_T: {\
       Idnt ia = inst.idnts[0], ib = inst.idnts[1]; \
-      auto [va_ok, va] = frame.get_munit(ia.frame_id, ia.idnt_id()); \
-      auto [vb_ok, vb] = frame.get_munit(ib.frame_id, ib.idnt_id()); \
+      auto [va_ok, va] = get_value(frame, ia); \
+      auto [vb_ok, vb] = get_value(frame, ib); \
       auto [pv_ok, pv] = frame.get_munit(frame.frame_id(), -1); \
       if(!va_ok || !vb_ok || !pv_ok) { frame.set_rt_result(RtResult::make_corrupted_error()); return; } \
-      pv.set(*va.get<Number>() OPER *vb.get<Number>()); \
+      pv.set(*va->cast_self<Number>() OPER *vb->cast_self<Number>()); \
       break; \
     }
   HANDLE_BIN_INST(Operator::plus, +)
@@ -92,12 +155,13 @@ void executor(Frame& frame, const Utils::BC::Instruction& inst) {
   }
   case Operator::func: {
     Idnt func = inst.idnts.back();
-    auto [fp_ok, m_fp] = frame.get_munit(func.frame_id, func.idnt_id());
+    auto [fp_ok, p_fp] = get_variable(frame, func);
     if(!fp_ok) {
-      frame.set_rt_result(RtResult::make_corrupted_error());
+      if(frame.rt_result().code == RtResult::UndefinedVar)
+        frame.emplace_rt_result(RtResult::InvalidUse, "Trying to call a not callable value.");
       return;
     }
-    auto fp = m_fp.get<Callable>();
+    auto fp = p_fp->cast_self<Callable>();
     if(!fp->is_valid()) {
       frame.emplace_rt_result(RtResult::InvalidUse, "Numbers are not callable object.");
       return;
@@ -109,12 +173,11 @@ void executor(Frame& frame, const Utils::BC::Instruction& inst) {
     auto pframe = frame.enter_new_frame();
     int arg_id = 0;
     for(auto it = std::next(inst.idnts.crbegin()), end = inst.idnts.crend(); it != end; ++it) {
-      auto [pp_ok, m_pp] = frame.get_munit(it->frame_id, it->idnt_id_const());
+      auto [pp_ok, pp] = get_value(frame, *it);
       if(!pp_ok) {
         frame.set_rt_result(RtResult::make_corrupted_error());
         return;
       }
-      auto pp = m_pp.get<Object>();
       auto [arg_ok, m_arg] = frame.get_munit(frame.frame_id(), arg_id);
       if(!arg_ok) {
         frame.set_rt_result(RtResult::make_corrupted_error());
@@ -125,11 +188,12 @@ void executor(Frame& frame, const Utils::BC::Instruction& inst) {
     }
     fp->call(frame);
     auto [ppv_ok, ppv] = pframe.get_munit(pframe.frame_id(), -1);
-    if(!ppv_ok) {
+    auto [pv_ok, pv] = get_value(frame, Idnt::make_pre_value(frame.frame_id()));
+    if(!ppv_ok || !pv_ok) {
       frame.set_rt_result(RtResult::make_corrupted_error());
       return;
     }
-    ppv.set(ppv.get<Number>());
+    ppv.set(pv);
     break;
   }
   case Operator::callbf: {
@@ -142,12 +206,12 @@ void executor(Frame& frame, const Utils::BC::Instruction& inst) {
     assert(fn != MathLangLib::builtin_fn.end());
     Utils::DT::args_t arg_list;
     for(auto it = std::next(inst.idnts.cbegin()); it != inst.idnts.cend(); ++it) {
-      auto [iv_ok, m_iv] = frame.get_munit(it->frame_id, it->idnt_id_const());
+      auto [iv_ok, p_iv] = get_value(frame, *it);
       if(!iv_ok) {
         frame.set_rt_result(RtResult::make_corrupted_error());
         return;
       }
-      auto iv = m_iv.get<Number>();
+      auto iv = p_iv->cast_self<Number>();
       if(!iv->is_valid()) {
         frame.emplace_rt_result(RtResult::InvalidUse, "Builtin functions can only call with Number-type.");
         return;
@@ -159,12 +223,12 @@ void executor(Frame& frame, const Utils::BC::Instruction& inst) {
   }
   case Operator::print: {
     Idnt idnt = inst.idnts[0];
-    auto [vi_ok, m_vi] = frame.get_munit(idnt.frame_id, idnt.idnt_id());
+    auto [vi_ok, p_vi] = get_value(frame, idnt);
     if(!vi_ok) {
       frame.set_rt_result(RtResult::make_corrupted_error());
       return;
     }
-    auto vi = m_vi.get<Number>();
+    auto vi = p_vi->cast_self<Number>();
     if(!vi->is_valid()) {
       if(frame.rt_result().code == RtResult::UndefinedVar)
         frame.emplace_rt_result(RtResult::UndefinedVar, "Cannot print an undefined value.");

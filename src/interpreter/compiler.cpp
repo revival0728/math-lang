@@ -1,7 +1,6 @@
 #include <cassert>
 #include "compiler.hpp"
 #include "mathlib.hpp"
-#include "utils/utils.hpp"
 
 using namespace Utils;
 
@@ -194,6 +193,7 @@ Parser::Idnt Parser::store_pre_value(FIP& frame) {
 Parser::Result_T Parser::make_result() {
   Result_T ret;
   ret.inst_list = this->inst_list;
+  ret.mtable_size = this->frame.idnt_count();
   return ret;
 }
 
