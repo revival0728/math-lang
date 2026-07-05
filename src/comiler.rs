@@ -590,6 +590,7 @@ mod test {
         assert_eq!(ast, &correct);
     }
 
+    // TODO: fixed this bug
     #[test]
     fn simple_expr_2() {
         let mut compiler = Compiler::new("i = i + 1 * b - 1");

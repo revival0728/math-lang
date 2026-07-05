@@ -24,8 +24,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "math-lang-rust"
-version = "0.1.0"
+name = "math-lang"
+version = "0.2.0"
 dependencies = [
  "lexgen",
  "lexgen_util",

@@ -1,7 +1,10 @@
 [package]
-name = "math-lang-rust"
-version = "0.1.0"
+name = "math-lang"
+version = "0.2.0"
 edition = "2024"
+authors = ["revival0728"]
+description = "toy scripting language to calculate math"
+homepage = "https://github.com/revival0728/math-lang"
 
 [dependencies]
 lexgen = "0.16.0"
