@@ -1,0 +1,609 @@
+use crate::lexer::{Lexer, Token};
+use lexgen_util::LexerErrorKind;
+
+#[derive(Debug, Default, PartialEq, Eq, Clone)]
+pub enum Expr<'input> {
+    #[default]
+    None,
+    Number(&'input str),
+    Var(&'input str),
+    FunCall(&'input str, Vec<Expr<'input>>),
+    Inst(Box<Inst<'input>>),
+}
+
+#[derive(Debug, Default, PartialEq, Eq, Clone)]
+pub enum Inst<'input> {
+    #[default]
+    None,
+    Expr(Expr<'input>),
+    Set(Expr<'input>, Expr<'input>),
+    Add(Expr<'input>, Expr<'input>),
+    Minus(Expr<'input>, Expr<'input>),
+    Div(Expr<'input>, Expr<'input>),
+    Multi(Expr<'input>, Expr<'input>),
+    Pow(Expr<'input>, Expr<'input>),
+    NegSign(Expr<'input>),
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct CompilerState {
+    in_paren: usize,
+    in_expr: usize,
+    in_funcall: usize,
+    expr_depth: usize,
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct Compiler<'input> {
+    source: &'input str,
+    state: CompilerState,
+    ast: Vec<Inst<'input>>,
+    oper_tk: Vec<(lexgen_util::Loc, Token<'input>)>,
+    idnt_tk: Vec<(lexgen_util::Loc, Expr<'input>)>,
+    fun_call: Vec<Vec<(lexgen_util::Loc, Token<'input>)>>,
+    expr_buf: Vec<(lexgen_util::Loc, Vec<(lexgen_util::Loc, Token<'input>)>)>,
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct CompileError {
+    pub line: u32,
+    pub col: u32,
+    pub byte_idx: usize,
+    pub msg: String,
+}
+
+impl<'input> Inst<'input> {
+    pub fn from_binary_token(token: &Token<'input>, lhs: Expr<'input>, rhs: Expr<'input>) -> Self {
+        match token {
+            Token::Plus => Self::Add(lhs, rhs),
+            Token::Minus => Self::Minus(lhs, rhs),
+            Token::Star => Self::Multi(lhs, rhs),
+            Token::Slash => Self::Div(lhs, rhs),
+            Token::Eq => Self::Set(lhs, rhs),
+            Token::Pow => Self::Pow(lhs, rhs),
+            _ => panic!("compiler internal error!"),
+        }
+    }
+    pub fn is_expr(&self) -> bool {
+        if let Inst::Expr(_) = self {
+            true
+        } else {
+            false
+        }
+    }
+    pub fn unwrap_expr(self) -> Expr<'input> {
+        if let Inst::Expr(expr) = self {
+            expr
+        } else {
+            panic!("compiler internal error!")
+        }
+    }
+    pub fn priority(&self) -> u8 {
+        match self {
+            Inst::None | Inst::Expr(_) => panic!("compiler internal error!"),
+            Inst::Set(_, _) => 0,
+            Inst::Add(_, _) => 1,
+            Inst::Minus(_, _) => 1,
+            Inst::Multi(_, _) => 2,
+            Inst::Div(_, _) => 2,
+            Inst::Pow(_, _) => 3,
+            Inst::NegSign(_) => 4,
+        }
+    }
+    pub fn get_binary_exprs(&mut self) -> (&mut Expr<'input>, &mut Expr<'input>) {
+        match self {
+            Self::Add(lhs, rhs)
+            | Self::Minus(lhs, rhs)
+            | Self::Multi(lhs, rhs)
+            | Self::Div(lhs, rhs)
+            | Self::Set(lhs, rhs)
+            | Self::Pow(lhs, rhs) => (lhs, rhs),
+            _ => panic!("compiler internal error!"),
+        }
+    }
+}
+
+impl CompileError {
+    pub fn new(loc: &lexgen_util::Loc, msg: String) -> Self {
+        CompileError {
+            line: loc.line,
+            col: loc.col,
+            byte_idx: loc.byte_idx,
+            msg,
+        }
+    }
+    pub fn new_with_loc(loc: &lexgen_util::Loc) -> Self {
+        CompileError {
+            line: loc.line,
+            col: loc.col,
+            byte_idx: loc.byte_idx,
+            msg: String::new(),
+        }
+    }
+    pub fn new_with_literal(loc: &lexgen_util::Loc, msg: &'static str) -> Self {
+        CompileError {
+            line: loc.line,
+            col: loc.col,
+            byte_idx: loc.byte_idx,
+            msg: msg.to_string(),
+        }
+    }
+}
+
+impl<'input> Compiler<'input> {
+    pub fn new(source: &'input str) -> Self {
+        let state = CompilerState::default();
+        let ast = Vec::new();
+        let oper_tk = Vec::new();
+        let idnt_tk = Vec::new();
+        let fun_call = Vec::new();
+        let expr_buf = Vec::new();
+
+        Compiler {
+            source,
+            state,
+            ast,
+            oper_tk,
+            idnt_tk,
+            fun_call,
+            expr_buf,
+        }
+    }
+}
+
+impl<'input> Compiler<'input> {
+    pub fn compile(&mut self) -> Result<&Vec<Inst<'input>>, CompileError> {
+        let lexer = Lexer::new(self.source);
+
+        self.expr_buf.push((lexgen_util::Loc::default(), vec![]));
+
+        let mut to_neg_sign = false;
+        let mut to_add_mul = false;
+        let mut to_make_func = false;
+        let mut to_push_token;
+        for token in lexer {
+            to_push_token = true;
+            if token.is_err() {
+                let err = token.err().unwrap();
+                let mut ce = CompileError::new_with_loc(&err.location);
+                match err.kind {
+                    LexerErrorKind::InvalidToken => {
+                        ce.msg = "invalid token".to_owned();
+                    }
+                    LexerErrorKind::Custom(_) => {}
+                }
+                return Err(ce);
+            }
+
+            let (lloc, token, _rloc) = token.unwrap();
+
+            match token {
+                Token::None => panic!("compiler internal error!"),
+                Token::Newline => {
+                    to_add_mul = false;
+                    to_make_func = false;
+                    to_neg_sign = false;
+                    self.expr_buf.push((lloc, vec![]));
+                }
+                Token::Comma
+                | Token::Eq
+                | Token::Plus
+                | Token::Minus
+                | Token::Star
+                | Token::Slash => {
+                    to_add_mul = false;
+                    to_make_func = false;
+                    if token == Token::Minus && to_neg_sign {
+                        to_neg_sign = false;
+                        self.expr_buf
+                            .last_mut()
+                            .unwrap()
+                            .1
+                            .push((lloc, Token::NegSign));
+                    } else {
+                        to_neg_sign = true;
+                    }
+                }
+                Token::Number(_) => {
+                    to_make_func = false;
+                    to_neg_sign = false;
+                    if to_add_mul {
+                        return Err(CompileError::new_with_literal(
+                            &lloc,
+                            "consecutive number literals are not acceptable",
+                        ));
+                    } else {
+                        to_add_mul = true;
+                    }
+                }
+                Token::Var(_) => {
+                    to_neg_sign = false;
+                    to_make_func = true;
+                    if to_add_mul {
+                        self.expr_buf
+                            .last_mut()
+                            .unwrap()
+                            .1
+                            .push((lloc, Token::Star));
+                    } else {
+                        to_add_mul = true;
+                    }
+                }
+                Token::LParen => {
+                    to_neg_sign = false;
+                    if to_make_func {
+                        to_make_func = false;
+                        let (loc, var_tk) = self.expr_buf.last_mut().unwrap().1.pop().unwrap();
+                        if let Token::Var(name) = var_tk {
+                            to_push_token = false;
+                            self.expr_buf
+                                .last_mut()
+                                .unwrap()
+                                .1
+                                .push((loc, Token::FunCall(name)));
+                        } else {
+                            panic!("compiler internal error!");
+                        }
+                    } else if to_add_mul {
+                        self.expr_buf
+                            .last_mut()
+                            .unwrap()
+                            .1
+                            .push((lloc, Token::Star));
+                    }
+                    to_add_mul = false;
+                }
+                _ => {
+                    to_add_mul = false;
+                    to_make_func = false;
+                    to_neg_sign = false;
+                }
+            };
+            if to_push_token {
+                self.expr_buf.last_mut().unwrap().1.push((lloc, token));
+            }
+        }
+
+        self.expr_buf.reverse();
+
+        loop {
+            let expr = self.parse_expr()?;
+            if let Expr::None = expr {
+                break;
+            }
+            if let Expr::Inst(inst) = expr {
+                self.ast.push(*inst);
+            } else {
+                panic!("compiler internal error!");
+            }
+        }
+
+        Ok(&self.ast)
+    }
+    fn parse_expr(&mut self) -> Result<Expr<'input>, CompileError> {
+        if self.expr_buf.is_empty() {
+            return Ok(Expr::None);
+        }
+
+        macro_rules! handle_lparen {
+            ($lloc:ident) => {{
+                if self.state.in_funcall > 0 {
+                    self.state.in_funcall += 1;
+                } else {
+                    self.state.in_paren += 1;
+                }
+            }};
+        }
+        macro_rules! handle_comma_err {
+            ($lloc:ident) => {{
+                return Err(CompileError::new_with_literal(
+                    &$lloc,
+                    "comma found outside function call",
+                ));
+            }};
+        }
+
+        let (rloc, tokens) = self.expr_buf.pop().unwrap();
+        for (lloc, token) in tokens {
+            if self.state.in_paren > 0 {
+                match token {
+                    Token::LParen => {
+                        handle_lparen!(lloc);
+                        self.expr_buf
+                            .last_mut()
+                            .unwrap()
+                            .1
+                            .push((lloc, Token::LParen));
+                    }
+                    Token::RParen => {
+                        self.state.in_paren -= 1;
+                        if self.state.in_paren == 0 {
+                            let expr = self.parse_expr()?;
+                            self.idnt_tk.push((lloc, expr));
+                        }
+                    }
+                    Token::Comma => handle_comma_err!(lloc),
+                    Token::FunCall(name) => self
+                        .expr_buf
+                        .last_mut()
+                        .unwrap()
+                        .1
+                        .push((lloc, Token::FunCall(name))),
+                    Token::Plus => self
+                        .expr_buf
+                        .last_mut()
+                        .unwrap()
+                        .1
+                        .push((lloc, Token::Plus)),
+                    Token::Minus => self
+                        .expr_buf
+                        .last_mut()
+                        .unwrap()
+                        .1
+                        .push((lloc, Token::Minus)),
+                    Token::Star => self
+                        .expr_buf
+                        .last_mut()
+                        .unwrap()
+                        .1
+                        .push((lloc, Token::Star)),
+                    Token::Slash => self
+                        .expr_buf
+                        .last_mut()
+                        .unwrap()
+                        .1
+                        .push((lloc, Token::Slash)),
+                    Token::NegSign => self
+                        .expr_buf
+                        .last_mut()
+                        .unwrap()
+                        .1
+                        .push((lloc, Token::NegSign)),
+                    Token::Eq => self.expr_buf.last_mut().unwrap().1.push((lloc, Token::Eq)),
+                    Token::Pow => self.expr_buf.last_mut().unwrap().1.push((lloc, Token::Pow)),
+                    Token::Var(name) => self
+                        .expr_buf
+                        .last_mut()
+                        .unwrap()
+                        .1
+                        .push((lloc, Token::Var(name))),
+                    Token::Number(data) => self
+                        .expr_buf
+                        .last_mut()
+                        .unwrap()
+                        .1
+                        .push((lloc, Token::Number(data))),
+                    Token::None | Token::Newline => panic!("compiler internal error!"),
+                }
+            } else if self.state.in_funcall > 0 {
+                match token {
+                    Token::LParen => {
+                        handle_lparen!(lloc);
+                        self.fun_call
+                            .last_mut()
+                            .unwrap()
+                            .push((lloc, Token::LParen));
+                    }
+                    Token::RParen => {
+                        self.state.in_funcall -= 1;
+                        if self.state.in_funcall == 0 {
+                            let expr = self.parse_funcall()?;
+                            self.idnt_tk.push((lloc, expr));
+                        } else {
+                            self.fun_call
+                                .last_mut()
+                                .unwrap()
+                                .push((lloc, Token::RParen));
+                        }
+                    }
+                    Token::Comma => {
+                        self.fun_call.push(vec![]);
+                    }
+                    Token::FunCall(name) => self
+                        .fun_call
+                        .last_mut()
+                        .unwrap()
+                        .push((lloc, Token::FunCall(name))),
+                    Token::Plus => self.fun_call.last_mut().unwrap().push((lloc, Token::Plus)),
+                    Token::Minus => self.fun_call.last_mut().unwrap().push((lloc, Token::Minus)),
+                    Token::Star => self.fun_call.last_mut().unwrap().push((lloc, Token::Star)),
+                    Token::Slash => self.fun_call.last_mut().unwrap().push((lloc, Token::Slash)),
+                    Token::NegSign => self
+                        .fun_call
+                        .last_mut()
+                        .unwrap()
+                        .push((lloc, Token::NegSign)),
+                    Token::Eq => self.fun_call.last_mut().unwrap().push((lloc, Token::Eq)),
+                    Token::Pow => self.fun_call.last_mut().unwrap().push((lloc, Token::Pow)),
+                    Token::Var(name) => self
+                        .fun_call
+                        .last_mut()
+                        .unwrap()
+                        .push((lloc, Token::Var(name))),
+                    Token::Number(data) => self
+                        .fun_call
+                        .last_mut()
+                        .unwrap()
+                        .push((lloc, Token::Number(data))),
+                    Token::None | Token::Newline => panic!("compiler internal error!"),
+                }
+            } else {
+                match token {
+                    Token::LParen => {
+                        handle_lparen!(lloc);
+                        self.expr_buf.push((lloc, vec![]));
+                    }
+                    Token::RParen => {
+                        return Err(CompileError::new_with_literal(&lloc, "missing left paren"));
+                    }
+                    Token::FunCall(name) => {
+                        self.state.in_funcall += 1;
+                        self.fun_call.push(vec![(lloc, Token::Var(name))]);
+                        self.fun_call.push(vec![]);
+                    }
+                    Token::Comma => handle_comma_err!(lloc),
+                    Token::Plus => self.oper_tk.push((lloc, Token::Plus)),
+                    Token::Minus => self.oper_tk.push((lloc, Token::Minus)),
+                    Token::Star => self.oper_tk.push((lloc, Token::Star)),
+                    Token::Slash => self.oper_tk.push((lloc, Token::Slash)),
+                    Token::Pow => self.oper_tk.push((lloc, Token::Pow)),
+                    Token::NegSign => self.oper_tk.push((lloc, Token::NegSign)),
+                    Token::Eq => self.oper_tk.push((lloc, Token::Eq)),
+                    Token::Var(name) => self.idnt_tk.push((lloc, Expr::Var(name))),
+                    Token::Number(data) => self.idnt_tk.push((lloc, Expr::Number(data))),
+                    Token::None | Token::Newline => panic!("compiler internal error!"),
+                };
+            }
+        }
+
+        if self.state.in_paren > 0 {
+            return Err(CompileError::new_with_literal(&rloc, "missing right paren"));
+        } else if self.state.in_funcall > 0 {
+            return Err(CompileError::new_with_literal(
+                &rloc,
+                "incomplete function call",
+            ));
+        } else if self.state.in_expr > 0 {
+            return Err(CompileError::new_with_literal(&rloc, "missing identifier"));
+        } else {
+            let inst = self.parse_inst()?;
+            return if let Inst::Expr(expr) = inst {
+                Ok(expr)
+            } else {
+                Ok(Expr::Inst(Box::new(inst)))
+            };
+        }
+    }
+    fn parse_funcall(&mut self) -> Result<Expr<'input>, CompileError> {
+        let mut args = Vec::new();
+        for _ in 1..self.fun_call.len() {
+            let tokens = self.fun_call.pop().unwrap();
+            self.expr_buf.push((self.fun_call[0][0].0, tokens));
+            let expr = self.parse_expr()?;
+            args.push(expr);
+        }
+        args.reverse();
+
+        let mut fn_name = self.fun_call.pop().unwrap();
+        if let Token::Var(name) = fn_name.pop().unwrap().1 {
+            Ok(Expr::FunCall(name, args))
+        } else {
+            panic!("compiler internal error!");
+        }
+    }
+    fn parse_inst(&mut self) -> Result<Inst<'input>, CompileError> {
+        while let Some((lloc, oper)) = self.oper_tk.pop() {
+            match oper {
+                Token::NegSign => {
+                    let Some((_, idnt)) = self.idnt_tk.pop() else {
+                        return Err(CompileError::new_with_literal(
+                            &lloc,
+                            "expected identifier or expression",
+                        ));
+                    };
+                    self.state.expr_depth = 0;
+                    let inst = Box::new(Inst::NegSign(idnt));
+                    self.idnt_tk.push((lloc, Expr::Inst(inst)));
+                }
+                Token::Plus
+                | Token::Minus
+                | Token::Star
+                | Token::Slash
+                | Token::Pow
+                | Token::Eq => {
+                    let Some((_rhs_loc, rhs)) = self.idnt_tk.pop() else {
+                        return Err(CompileError::new_with_literal(
+                            &lloc,
+                            "expected identifier or expression (missing RHS)",
+                        ));
+                    };
+                    let Some((lhs_loc, lhs)) = self.idnt_tk.pop() else {
+                        return Err(CompileError::new_with_literal(
+                            &lloc,
+                            "expected identifier or expression (missing LHS)",
+                        ));
+                    };
+
+                    if self.state.expr_depth == 0 {
+                        let inst = Box::new(Inst::from_binary_token(&oper, lhs, rhs));
+                        self.idnt_tk.push((lhs_loc, Expr::Inst(inst)));
+                        continue;
+                    }
+
+                    let Expr::Inst(rhs_inst) = rhs else {
+                        panic!("compiler internal error!")
+                    };
+                    let mut nxt_inst = *rhs_inst;
+                    let mut prv_inst = &mut nxt_inst;
+                    for _ in 1..self.state.expr_depth {
+                        let (sub_lhs, _sub_rhs) = prv_inst.get_binary_exprs();
+                        let Expr::Inst(nxt_inst) = sub_lhs else {
+                            panic!("compiler internal error!")
+                        };
+                        prv_inst = nxt_inst.as_mut();
+                    }
+                    let mut cur_inst = Inst::from_binary_token(&oper, Expr::None, Expr::None);
+                    if cur_inst.priority() >= prv_inst.priority() {
+                        self.state.expr_depth += 1;
+                        let (sub_lhs, _sub_rhs) = prv_inst.get_binary_exprs();
+                        cur_inst = Inst::from_binary_token(&oper, lhs, sub_lhs.clone());
+                        *sub_lhs = Expr::Inst(Box::new(cur_inst));
+                    } else {
+                        self.state.expr_depth = 0;
+                        nxt_inst =
+                            Inst::from_binary_token(&oper, lhs, Expr::Inst(Box::new(nxt_inst)));
+                    }
+                    self.idnt_tk.push((lhs_loc, Expr::Inst(Box::new(nxt_inst))));
+                }
+                _ => panic!("compiler internal error!"),
+            }
+        }
+
+        if self.idnt_tk.len() != 1 {
+            return Err(CompileError::new_with_literal(
+                &self.idnt_tk[0].0,
+                "redundant identifier or expression (missing operator)",
+            ));
+        }
+        let Some((_, expr)) = self.idnt_tk.pop() else {
+            panic!("compiler internal error!")
+        };
+        let Expr::Inst(inst) = expr else {
+            panic!("compiler internal error!")
+        };
+        Ok(*inst)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::{Compiler, Expr, Inst};
+
+    #[test]
+    fn simple_expr_1() {
+        let mut compiler = Compiler::new("i = i + 1");
+        let ast = compiler.compile().unwrap();
+        let correct = vec![Inst::Set(
+            Expr::Var("i"),
+            Expr::Inst(Box::new(Inst::Add(Expr::Var("i"), Expr::Number("1")))),
+        )];
+        assert_eq!(ast, &correct);
+    }
+
+    #[test]
+    fn simple_expr_2() {
+        let mut compiler = Compiler::new("i = i + 1 * b - 1");
+        let ast = compiler.compile().unwrap();
+        let correct = vec![Inst::Set(
+            Expr::Var("i"),
+            Expr::Inst(Box::new(Inst::Add(
+                Expr::Var("i"),
+                Expr::Inst(Box::new(Inst::Minus(
+                    Expr::Inst(Box::new(Inst::Multi(Expr::Number("1"), Expr::Var("b")))),
+                    Expr::Number("1"),
+                ))),
+            ))),
+        )];
+        assert_eq!(ast, &correct);
+    }
+}

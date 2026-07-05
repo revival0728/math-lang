@@ -1,0 +1,8 @@
+[package]
+name = "math-lang-rust"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+lexgen = "0.16.0"
+lexgen_util = "0.16.0"
