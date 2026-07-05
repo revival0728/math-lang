@@ -9,3 +9,6 @@ homepage = "https://github.com/revival0728/math-lang"
 [dependencies]
 lexgen = "0.16.0"
 lexgen_util = "0.16.0"
+
+[dev-dependencies]
+pretty_assertions = "1.4.1"

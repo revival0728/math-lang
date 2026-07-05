@@ -183,6 +183,7 @@ impl<'input> Compiler<'input> {
                     to_add_mul = false;
                     to_make_func = false;
                     to_neg_sign = false;
+                    to_push_token = false;
                     self.expr_buf.push((lloc, vec![]));
                 }
                 Token::Comma
@@ -266,16 +267,23 @@ impl<'input> Compiler<'input> {
 
         self.expr_buf.reverse();
 
-        loop {
+        for _ in 0..self.expr_buf.len() {
             let expr = self.parse_expr()?;
-            if let Expr::None = expr {
-                break;
+            if expr == Expr::None {
+                continue;
             }
-            if let Expr::Inst(inst) = expr {
-                self.ast.push(*inst);
-            } else {
-                panic!("compiler internal error!");
-            }
+            match expr {
+                Expr::Inst(inst) => self.ast.push(*inst),
+                Expr::None => panic!("compiler internal error!"),
+                _ => self.ast.push(Inst::Expr(expr)),
+            };
+        }
+
+        if !self.idnt_tk.is_empty() {
+            return Err(CompileError::new_with_literal(
+                &self.idnt_tk[0].0,
+                "redundant identifier or expression (missing operator)",
+            ));
         }
 
         Ok(&self.ast)
@@ -285,15 +293,15 @@ impl<'input> Compiler<'input> {
             return Ok(Expr::None);
         }
 
-        macro_rules! handle_lparen {
-            ($lloc:ident) => {{
-                if self.state.in_funcall > 0 {
-                    self.state.in_funcall += 1;
-                } else {
-                    self.state.in_paren += 1;
-                }
-            }};
+        if self.expr_buf.last().unwrap().1.is_empty() {
+            self.expr_buf.pop();
+            return Ok(Expr::None);
         }
+
+        // seperate expressions
+        self.oper_tk
+            .push((lexgen_util::Loc::default(), Token::None));
+
         macro_rules! handle_comma_err {
             ($lloc:ident) => {{
                 return Err(CompileError::new_with_literal(
@@ -308,27 +316,40 @@ impl<'input> Compiler<'input> {
             if self.state.in_paren > 0 {
                 match token {
                     Token::LParen => {
-                        handle_lparen!(lloc);
+                        self.state.in_paren += 1;
                         self.expr_buf
                             .last_mut()
                             .unwrap()
                             .1
                             .push((lloc, Token::LParen));
                     }
+                    Token::FunCall(name) => {
+                        self.state.in_paren += 1;
+                        self.expr_buf
+                            .last_mut()
+                            .unwrap()
+                            .1
+                            .push((lloc, Token::FunCall(name)));
+                    }
                     Token::RParen => {
                         self.state.in_paren -= 1;
                         if self.state.in_paren == 0 {
                             let expr = self.parse_expr()?;
                             self.idnt_tk.push((lloc, expr));
+                        } else {
+                            self.expr_buf
+                                .last_mut()
+                                .unwrap()
+                                .1
+                                .push((lloc, Token::RParen));
                         }
                     }
-                    Token::Comma => handle_comma_err!(lloc),
-                    Token::FunCall(name) => self
+                    Token::Comma => self
                         .expr_buf
                         .last_mut()
                         .unwrap()
                         .1
-                        .push((lloc, Token::FunCall(name))),
+                        .push((lloc, Token::Comma)),
                     Token::Plus => self
                         .expr_buf
                         .last_mut()
@@ -377,8 +398,15 @@ impl<'input> Compiler<'input> {
                 }
             } else if self.state.in_funcall > 0 {
                 match token {
+                    Token::FunCall(name) => {
+                        self.state.in_funcall += 1;
+                        self.fun_call
+                            .last_mut()
+                            .unwrap()
+                            .push((lloc, Token::FunCall(name)));
+                    }
                     Token::LParen => {
-                        handle_lparen!(lloc);
+                        self.state.in_funcall += 1;
                         self.fun_call
                             .last_mut()
                             .unwrap()
@@ -399,11 +427,6 @@ impl<'input> Compiler<'input> {
                     Token::Comma => {
                         self.fun_call.push(vec![]);
                     }
-                    Token::FunCall(name) => self
-                        .fun_call
-                        .last_mut()
-                        .unwrap()
-                        .push((lloc, Token::FunCall(name))),
                     Token::Plus => self.fun_call.last_mut().unwrap().push((lloc, Token::Plus)),
                     Token::Minus => self.fun_call.last_mut().unwrap().push((lloc, Token::Minus)),
                     Token::Star => self.fun_call.last_mut().unwrap().push((lloc, Token::Star)),
@@ -430,7 +453,7 @@ impl<'input> Compiler<'input> {
             } else {
                 match token {
                     Token::LParen => {
-                        handle_lparen!(lloc);
+                        self.state.in_paren += 1;
                         self.expr_buf.push((lloc, vec![]));
                     }
                     Token::RParen => {
@@ -492,8 +515,10 @@ impl<'input> Compiler<'input> {
         }
     }
     fn parse_inst(&mut self) -> Result<Inst<'input>, CompileError> {
+        self.state.expr_depth = 0; // reset state
         while let Some((lloc, oper)) = self.oper_tk.pop() {
             match oper {
+                Token::None => break,
                 Token::NegSign => {
                     let Some((_, idnt)) = self.idnt_tk.pop() else {
                         return Err(CompileError::new_with_literal(
@@ -525,6 +550,7 @@ impl<'input> Compiler<'input> {
                     };
 
                     if self.state.expr_depth == 0 {
+                        self.state.expr_depth += 1;
                         let inst = Box::new(Inst::from_binary_token(&oper, lhs, rhs));
                         self.idnt_tk.push((lhs_loc, Expr::Inst(inst)));
                         continue;
@@ -535,23 +561,31 @@ impl<'input> Compiler<'input> {
                     };
                     let mut nxt_inst = *rhs_inst;
                     let mut prv_inst = &mut nxt_inst;
-                    for _ in 1..self.state.expr_depth {
+                    let mut cur_inst = Inst::from_binary_token(&oper, Expr::None, Expr::None);
+                    let expr_depth = self.state.expr_depth;
+                    self.state.expr_depth = 1;
+                    for _ in 1..expr_depth {
+                        if prv_inst.priority() > cur_inst.priority() {
+                            break;
+                        }
+                        self.state.expr_depth += 1;
                         let (sub_lhs, _sub_rhs) = prv_inst.get_binary_exprs();
                         let Expr::Inst(nxt_inst) = sub_lhs else {
                             panic!("compiler internal error!")
                         };
                         prv_inst = nxt_inst.as_mut();
                     }
-                    let mut cur_inst = Inst::from_binary_token(&oper, Expr::None, Expr::None);
                     if cur_inst.priority() >= prv_inst.priority() {
                         self.state.expr_depth += 1;
                         let (sub_lhs, _sub_rhs) = prv_inst.get_binary_exprs();
                         cur_inst = Inst::from_binary_token(&oper, lhs, sub_lhs.clone());
                         *sub_lhs = Expr::Inst(Box::new(cur_inst));
                     } else {
-                        self.state.expr_depth = 0;
-                        nxt_inst =
-                            Inst::from_binary_token(&oper, lhs, Expr::Inst(Box::new(nxt_inst)));
+                        *prv_inst = Inst::from_binary_token(
+                            &oper,
+                            lhs,
+                            Expr::Inst(Box::new(prv_inst.clone())),
+                        );
                     }
                     self.idnt_tk.push((lhs_loc, Expr::Inst(Box::new(nxt_inst))));
                 }
@@ -559,25 +593,28 @@ impl<'input> Compiler<'input> {
             }
         }
 
-        if self.idnt_tk.len() != 1 {
-            return Err(CompileError::new_with_literal(
-                &self.idnt_tk[0].0,
-                "redundant identifier or expression (missing operator)",
-            ));
-        }
         let Some((_, expr)) = self.idnt_tk.pop() else {
             panic!("compiler internal error!")
         };
-        let Expr::Inst(inst) = expr else {
-            panic!("compiler internal error!")
-        };
-        Ok(*inst)
+        match expr {
+            Expr::None => panic!("compiler internal error!"),
+            Expr::Inst(inst) => Ok(*inst),
+            _ => Ok(Inst::Expr(expr)),
+        }
     }
 }
 
 #[cfg(test)]
 mod test {
     use super::{Compiler, Expr, Inst};
+    use crate::test::examples;
+    use pretty_assertions::assert_eq;
+
+    macro_rules! expr_inst {
+        ($inst:expr) => {
+            Expr::Inst(Box::new($inst))
+        };
+    }
 
     #[test]
     fn simple_expr_1() {
@@ -590,21 +627,120 @@ mod test {
         assert_eq!(ast, &correct);
     }
 
-    // TODO: fixed this bug
     #[test]
     fn simple_expr_2() {
         let mut compiler = Compiler::new("i = i + 1 * b - 1");
         let ast = compiler.compile().unwrap();
         let correct = vec![Inst::Set(
             Expr::Var("i"),
-            Expr::Inst(Box::new(Inst::Add(
-                Expr::Var("i"),
-                Expr::Inst(Box::new(Inst::Minus(
-                    Expr::Inst(Box::new(Inst::Multi(Expr::Number("1"), Expr::Var("b")))),
-                    Expr::Number("1"),
-                ))),
-            ))),
+            expr_inst!(Inst::Minus(
+                expr_inst!(Inst::Add(
+                    Expr::Var("i"),
+                    expr_inst!(Inst::Multi(Expr::Number("1"), Expr::Var("b")))
+                )),
+                Expr::Number("1")
+            )),
         )];
+        assert_eq!(ast, &correct);
+    }
+
+    #[test]
+    fn simple_expr_3() {
+        let mut compiler = Compiler::new("i = i * (1 + 2) * 3 / b^5 + 4^(a + 3)");
+        let ast = compiler.compile().unwrap();
+        let correct = vec![Inst::Set(
+            Expr::Var("i"),
+            expr_inst!(Inst::Add(
+                expr_inst!(Inst::Div(
+                    expr_inst!(Inst::Multi(
+                        expr_inst!(Inst::Multi(
+                            Expr::Var("i"),
+                            expr_inst!(Inst::Add(Expr::Number("1"), Expr::Number("2")))
+                        )),
+                        Expr::Number("3")
+                    )),
+                    expr_inst!(Inst::Pow(Expr::Var("b"), Expr::Number("5")))
+                )),
+                expr_inst!(Inst::Pow(
+                    Expr::Number("4"),
+                    expr_inst!(Inst::Add(Expr::Var("a"), Expr::Number("3")))
+                ))
+            )),
+        )];
+        assert_eq!(ast, &correct);
+    }
+
+    #[test]
+    fn basic() {
+        let source = examples::basic();
+        let mut compiler = Compiler::new(&source);
+        let ast = compiler.compile().unwrap();
+        let correct = vec![
+            Inst::Set(
+                Expr::Var("ans"),
+                expr_inst!(Inst::Add(
+                    expr_inst!(Inst::Add(
+                        expr_inst!(Inst::Multi(
+                            expr_inst!(Inst::Add(
+                                expr_inst!(Inst::Multi(Expr::Number("1"), Expr::Number("2"))),
+                                Expr::Number("3")
+                            )),
+                            Expr::Number("4")
+                        )),
+                        expr_inst!(Inst::Multi(Expr::Number("5"), Expr::Number("6"),))
+                    )),
+                    Expr::Number("7")
+                )),
+            ),
+            Inst::Set(
+                Expr::Var("ans"),
+                expr_inst!(Inst::Multi(
+                    expr_inst!(Inst::Add(Expr::Var("ans"), Expr::Number("8"))),
+                    expr_inst!(Inst::Add(Expr::Number("9"), Expr::Number("10")))
+                )),
+            ),
+            Inst::Expr(Expr::Var("ans")),
+        ];
+        assert_eq!(ast, &correct);
+    }
+
+    #[test]
+    fn cosine_law() {
+        let source = examples::cosine_law();
+        let mut compiler = Compiler::new(&source);
+        let ast = compiler.compile().unwrap();
+        let correct = vec![
+            Inst::Set(Expr::Var("a"), Expr::Number("7")),
+            Inst::Set(Expr::Var("b"), Expr::Number("7")),
+            Inst::Set(Expr::Var("c"), Expr::Number("7")),
+            Inst::Set(
+                Expr::Var("cosRad"),
+                expr_inst!(Inst::Div(
+                    expr_inst!(Inst::Minus(
+                        expr_inst!(Inst::Add(
+                            Expr::FunCall("pow", vec![Expr::Var("a"), Expr::Number("2")]),
+                            Expr::FunCall("pow", vec![Expr::Var("b"), Expr::Number("2")]),
+                        )),
+                        Expr::FunCall("pow", vec![Expr::Var("c"), Expr::Number("2")]),
+                    )),
+                    expr_inst!(Inst::Multi(
+                        expr_inst!(Inst::Multi(Expr::Number("2"), Expr::Var("a"))),
+                        Expr::Var("b")
+                    )),
+                )),
+            ),
+            Inst::Set(
+                Expr::Var("deg"),
+                expr_inst!(Inst::Multi(
+                    expr_inst!(Inst::Div(
+                        Expr::FunCall("acos", vec![Expr::Var("cosRad")]),
+                        Expr::Var("pi")
+                    )),
+                    Expr::Number("180")
+                )),
+            ),
+            Inst::Expr(Expr::Var("deg")),
+        ];
         assert_eq!(ast, &correct);
     }
 }
