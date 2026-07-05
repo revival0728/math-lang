@@ -18,9 +18,9 @@ pub enum Inst<'input> {
     Expr(Expr<'input>),
     Set(Expr<'input>, Expr<'input>),
     Add(Expr<'input>, Expr<'input>),
-    Minus(Expr<'input>, Expr<'input>),
+    Sub(Expr<'input>, Expr<'input>),
     Div(Expr<'input>, Expr<'input>),
-    Multi(Expr<'input>, Expr<'input>),
+    Mul(Expr<'input>, Expr<'input>),
     Pow(Expr<'input>, Expr<'input>),
     NegSign(Expr<'input>),
 }
@@ -45,7 +45,7 @@ pub struct Compiler<'input> {
 }
 
 #[derive(Debug, Default, Clone)]
-pub struct CompileError {
+pub struct CompilerError {
     pub line: u32,
     pub col: u32,
     pub byte_idx: usize,
@@ -56,8 +56,8 @@ impl<'input> Inst<'input> {
     pub fn from_binary_token(token: &Token<'input>, lhs: Expr<'input>, rhs: Expr<'input>) -> Self {
         match token {
             Token::Plus => Self::Add(lhs, rhs),
-            Token::Minus => Self::Minus(lhs, rhs),
-            Token::Star => Self::Multi(lhs, rhs),
+            Token::Minus => Self::Sub(lhs, rhs),
+            Token::Star => Self::Mul(lhs, rhs),
             Token::Slash => Self::Div(lhs, rhs),
             Token::Eq => Self::Set(lhs, rhs),
             Token::Pow => Self::Pow(lhs, rhs),
@@ -83,8 +83,8 @@ impl<'input> Inst<'input> {
             Inst::None | Inst::Expr(_) => panic!("compiler internal error!"),
             Inst::Set(_, _) => 0,
             Inst::Add(_, _) => 1,
-            Inst::Minus(_, _) => 1,
-            Inst::Multi(_, _) => 2,
+            Inst::Sub(_, _) => 1,
+            Inst::Mul(_, _) => 2,
             Inst::Div(_, _) => 2,
             Inst::Pow(_, _) => 3,
             Inst::NegSign(_) => 4,
@@ -93,8 +93,8 @@ impl<'input> Inst<'input> {
     pub fn get_binary_exprs(&mut self) -> (&mut Expr<'input>, &mut Expr<'input>) {
         match self {
             Self::Add(lhs, rhs)
-            | Self::Minus(lhs, rhs)
-            | Self::Multi(lhs, rhs)
+            | Self::Sub(lhs, rhs)
+            | Self::Mul(lhs, rhs)
             | Self::Div(lhs, rhs)
             | Self::Set(lhs, rhs)
             | Self::Pow(lhs, rhs) => (lhs, rhs),
@@ -103,9 +103,9 @@ impl<'input> Inst<'input> {
     }
 }
 
-impl CompileError {
+impl CompilerError {
     pub fn new(loc: &lexgen_util::Loc, msg: String) -> Self {
-        CompileError {
+        CompilerError {
             line: loc.line,
             col: loc.col,
             byte_idx: loc.byte_idx,
@@ -113,7 +113,7 @@ impl CompileError {
         }
     }
     pub fn new_with_loc(loc: &lexgen_util::Loc) -> Self {
-        CompileError {
+        CompilerError {
             line: loc.line,
             col: loc.col,
             byte_idx: loc.byte_idx,
@@ -121,7 +121,7 @@ impl CompileError {
         }
     }
     pub fn new_with_literal(loc: &lexgen_util::Loc, msg: &'static str) -> Self {
-        CompileError {
+        CompilerError {
             line: loc.line,
             col: loc.col,
             byte_idx: loc.byte_idx,
@@ -152,7 +152,7 @@ impl<'input> Compiler<'input> {
 }
 
 impl<'input> Compiler<'input> {
-    pub fn compile(&mut self) -> Result<&Vec<Inst<'input>>, CompileError> {
+    pub fn compile(&mut self) -> Result<&Vec<Inst<'input>>, CompilerError> {
         let lexer = Lexer::new(self.source);
 
         self.expr_buf.push((lexgen_util::Loc::default(), vec![]));
@@ -165,7 +165,7 @@ impl<'input> Compiler<'input> {
             to_push_token = true;
             if token.is_err() {
                 let err = token.err().unwrap();
-                let mut ce = CompileError::new_with_loc(&err.location);
+                let mut ce = CompilerError::new_with_loc(&err.location);
                 match err.kind {
                     LexerErrorKind::InvalidToken => {
                         ce.msg = "invalid token".to_owned();
@@ -209,7 +209,7 @@ impl<'input> Compiler<'input> {
                     to_make_func = false;
                     to_neg_sign = false;
                     if to_add_mul {
-                        return Err(CompileError::new_with_literal(
+                        return Err(CompilerError::new_with_literal(
                             &lloc,
                             "consecutive number literals are not acceptable",
                         ));
@@ -280,7 +280,7 @@ impl<'input> Compiler<'input> {
         }
 
         if !self.idnt_tk.is_empty() {
-            return Err(CompileError::new_with_literal(
+            return Err(CompilerError::new_with_literal(
                 &self.idnt_tk[0].0,
                 "redundant identifier or expression (missing operator)",
             ));
@@ -288,7 +288,7 @@ impl<'input> Compiler<'input> {
 
         Ok(&self.ast)
     }
-    fn parse_expr(&mut self) -> Result<Expr<'input>, CompileError> {
+    fn parse_expr(&mut self) -> Result<Expr<'input>, CompilerError> {
         if self.expr_buf.is_empty() {
             return Ok(Expr::None);
         }
@@ -304,7 +304,7 @@ impl<'input> Compiler<'input> {
 
         macro_rules! handle_comma_err {
             ($lloc:ident) => {{
-                return Err(CompileError::new_with_literal(
+                return Err(CompilerError::new_with_literal(
                     &$lloc,
                     "comma found outside function call",
                 ));
@@ -457,7 +457,7 @@ impl<'input> Compiler<'input> {
                         self.expr_buf.push((lloc, vec![]));
                     }
                     Token::RParen => {
-                        return Err(CompileError::new_with_literal(&lloc, "missing left paren"));
+                        return Err(CompilerError::new_with_literal(&lloc, "missing left paren"));
                     }
                     Token::FunCall(name) => {
                         self.state.in_funcall += 1;
@@ -480,14 +480,17 @@ impl<'input> Compiler<'input> {
         }
 
         if self.state.in_paren > 0 {
-            return Err(CompileError::new_with_literal(&rloc, "missing right paren"));
+            return Err(CompilerError::new_with_literal(
+                &rloc,
+                "missing right paren",
+            ));
         } else if self.state.in_funcall > 0 {
-            return Err(CompileError::new_with_literal(
+            return Err(CompilerError::new_with_literal(
                 &rloc,
                 "incomplete function call",
             ));
         } else if self.state.in_expr > 0 {
-            return Err(CompileError::new_with_literal(&rloc, "missing identifier"));
+            return Err(CompilerError::new_with_literal(&rloc, "missing identifier"));
         } else {
             let inst = self.parse_inst()?;
             return if let Inst::Expr(expr) = inst {
@@ -497,7 +500,7 @@ impl<'input> Compiler<'input> {
             };
         }
     }
-    fn parse_funcall(&mut self) -> Result<Expr<'input>, CompileError> {
+    fn parse_funcall(&mut self) -> Result<Expr<'input>, CompilerError> {
         let mut args = Vec::new();
         for _ in 1..self.fun_call.len() {
             let tokens = self.fun_call.pop().unwrap();
@@ -514,14 +517,14 @@ impl<'input> Compiler<'input> {
             panic!("compiler internal error!");
         }
     }
-    fn parse_inst(&mut self) -> Result<Inst<'input>, CompileError> {
+    fn parse_inst(&mut self) -> Result<Inst<'input>, CompilerError> {
         self.state.expr_depth = 0; // reset state
         while let Some((lloc, oper)) = self.oper_tk.pop() {
             match oper {
                 Token::None => break,
                 Token::NegSign => {
                     let Some((_, idnt)) = self.idnt_tk.pop() else {
-                        return Err(CompileError::new_with_literal(
+                        return Err(CompilerError::new_with_literal(
                             &lloc,
                             "expected identifier or expression",
                         ));
@@ -537,13 +540,13 @@ impl<'input> Compiler<'input> {
                 | Token::Pow
                 | Token::Eq => {
                     let Some((_rhs_loc, rhs)) = self.idnt_tk.pop() else {
-                        return Err(CompileError::new_with_literal(
+                        return Err(CompilerError::new_with_literal(
                             &lloc,
                             "expected identifier or expression (missing RHS)",
                         ));
                     };
                     let Some((lhs_loc, lhs)) = self.idnt_tk.pop() else {
-                        return Err(CompileError::new_with_literal(
+                        return Err(CompilerError::new_with_literal(
                             &lloc,
                             "expected identifier or expression (missing LHS)",
                         ));
@@ -633,10 +636,10 @@ mod test {
         let ast = compiler.compile().unwrap();
         let correct = vec![Inst::Set(
             Expr::Var("i"),
-            expr_inst!(Inst::Minus(
+            expr_inst!(Inst::Sub(
                 expr_inst!(Inst::Add(
                     Expr::Var("i"),
-                    expr_inst!(Inst::Multi(Expr::Number("1"), Expr::Var("b")))
+                    expr_inst!(Inst::Mul(Expr::Number("1"), Expr::Var("b")))
                 )),
                 Expr::Number("1")
             )),
@@ -652,8 +655,8 @@ mod test {
             Expr::Var("i"),
             expr_inst!(Inst::Add(
                 expr_inst!(Inst::Div(
-                    expr_inst!(Inst::Multi(
-                        expr_inst!(Inst::Multi(
+                    expr_inst!(Inst::Mul(
+                        expr_inst!(Inst::Mul(
                             Expr::Var("i"),
                             expr_inst!(Inst::Add(Expr::Number("1"), Expr::Number("2")))
                         )),
@@ -680,21 +683,21 @@ mod test {
                 Expr::Var("ans"),
                 expr_inst!(Inst::Add(
                     expr_inst!(Inst::Add(
-                        expr_inst!(Inst::Multi(
+                        expr_inst!(Inst::Mul(
                             expr_inst!(Inst::Add(
-                                expr_inst!(Inst::Multi(Expr::Number("1"), Expr::Number("2"))),
+                                expr_inst!(Inst::Mul(Expr::Number("1"), Expr::Number("2"))),
                                 Expr::Number("3")
                             )),
                             Expr::Number("4")
                         )),
-                        expr_inst!(Inst::Multi(Expr::Number("5"), Expr::Number("6"),))
+                        expr_inst!(Inst::Mul(Expr::Number("5"), Expr::Number("6"),))
                     )),
                     Expr::Number("7")
                 )),
             ),
             Inst::Set(
                 Expr::Var("ans"),
-                expr_inst!(Inst::Multi(
+                expr_inst!(Inst::Mul(
                     expr_inst!(Inst::Add(Expr::Var("ans"), Expr::Number("8"))),
                     expr_inst!(Inst::Add(Expr::Number("9"), Expr::Number("10")))
                 )),
@@ -716,22 +719,22 @@ mod test {
             Inst::Set(
                 Expr::Var("cosRad"),
                 expr_inst!(Inst::Div(
-                    expr_inst!(Inst::Minus(
+                    expr_inst!(Inst::Sub(
                         expr_inst!(Inst::Add(
                             Expr::FunCall("pow", vec![Expr::Var("a"), Expr::Number("2")]),
                             Expr::FunCall("pow", vec![Expr::Var("b"), Expr::Number("2")]),
                         )),
                         Expr::FunCall("pow", vec![Expr::Var("c"), Expr::Number("2")]),
                     )),
-                    expr_inst!(Inst::Multi(
-                        expr_inst!(Inst::Multi(Expr::Number("2"), Expr::Var("a"))),
+                    expr_inst!(Inst::Mul(
+                        expr_inst!(Inst::Mul(Expr::Number("2"), Expr::Var("a"))),
                         Expr::Var("b")
                     )),
                 )),
             ),
             Inst::Set(
                 Expr::Var("deg"),
-                expr_inst!(Inst::Multi(
+                expr_inst!(Inst::Mul(
                     expr_inst!(Inst::Div(
                         Expr::FunCall("acos", vec![Expr::Var("cosRad")]),
                         Expr::Var("pi")
