@@ -15,3 +15,16 @@ pub mod examples {
         get("cosine-law.mls")
     }
 }
+
+#[cfg(test)]
+pub mod simple_expr {
+    pub fn expr_1() -> &'static str {
+        "i = i + 1"
+    }
+    pub fn expr_2() -> &'static str {
+        "i = i + 1 * b - 1"
+    }
+    pub fn expr_3() -> &'static str {
+        "i = i * (1 + 2) * 3 / b^5 + 4^(a + 3)"
+    }
+}

@@ -16,13 +16,14 @@ pub enum Inst<'input> {
     #[default]
     None,
     Expr(Expr<'input>),
+    Neg(Expr<'input>),
     Set(Expr<'input>, Expr<'input>),
     Add(Expr<'input>, Expr<'input>),
     Sub(Expr<'input>, Expr<'input>),
     Div(Expr<'input>, Expr<'input>),
     Mul(Expr<'input>, Expr<'input>),
     Pow(Expr<'input>, Expr<'input>),
-    NegSign(Expr<'input>),
+    BultinFnCall(&'input str),
 }
 
 #[derive(Debug, Default, Clone)]
@@ -80,14 +81,16 @@ impl<'input> Inst<'input> {
     }
     pub fn priority(&self) -> u8 {
         match self {
-            Inst::None | Inst::Expr(_) => panic!("compiler internal error!"),
+            Inst::None | Inst::Expr(_) | Inst::BultinFnCall(_) => {
+                panic!("compiler internal error!")
+            }
             Inst::Set(_, _) => 0,
             Inst::Add(_, _) => 1,
             Inst::Sub(_, _) => 1,
             Inst::Mul(_, _) => 2,
             Inst::Div(_, _) => 2,
             Inst::Pow(_, _) => 3,
-            Inst::NegSign(_) => 4,
+            Inst::Neg(_) => 4,
         }
     }
     pub fn get_binary_exprs(&mut self) -> (&mut Expr<'input>, &mut Expr<'input>) {
@@ -530,7 +533,7 @@ impl<'input> Compiler<'input> {
                         ));
                     };
                     self.state.expr_depth = 0;
-                    let inst = Box::new(Inst::NegSign(idnt));
+                    let inst = Box::new(Inst::Neg(idnt));
                     self.idnt_tk.push((lloc, Expr::Inst(inst)));
                 }
                 Token::Plus
@@ -610,7 +613,7 @@ impl<'input> Compiler<'input> {
 #[cfg(test)]
 mod test {
     use super::{Compiler, Expr, Inst};
-    use crate::test::examples;
+    use crate::test::{examples, simple_expr};
     use pretty_assertions::assert_eq;
 
     macro_rules! expr_inst {
@@ -621,7 +624,7 @@ mod test {
 
     #[test]
     fn simple_expr_1() {
-        let mut compiler = Compiler::new("i = i + 1");
+        let mut compiler = Compiler::new(simple_expr::expr_1());
         let ast = compiler.compile().unwrap();
         let correct = vec![Inst::Set(
             Expr::Var("i"),
@@ -632,7 +635,7 @@ mod test {
 
     #[test]
     fn simple_expr_2() {
-        let mut compiler = Compiler::new("i = i + 1 * b - 1");
+        let mut compiler = Compiler::new(simple_expr::expr_2());
         let ast = compiler.compile().unwrap();
         let correct = vec![Inst::Set(
             Expr::Var("i"),
@@ -649,7 +652,7 @@ mod test {
 
     #[test]
     fn simple_expr_3() {
-        let mut compiler = Compiler::new("i = i * (1 + 2) * 3 / b^5 + 4^(a + 3)");
+        let mut compiler = Compiler::new(simple_expr::expr_3());
         let ast = compiler.compile().unwrap();
         let correct = vec![Inst::Set(
             Expr::Var("i"),
@@ -721,10 +724,10 @@ mod test {
                 expr_inst!(Inst::Div(
                     expr_inst!(Inst::Sub(
                         expr_inst!(Inst::Add(
-                            Expr::FunCall("pow", vec![Expr::Var("a"), Expr::Number("2")]),
-                            Expr::FunCall("pow", vec![Expr::Var("b"), Expr::Number("2")]),
+                            expr_inst!(Inst::Pow(Expr::Var("a"), Expr::Number("2"))),
+                            expr_inst!(Inst::Pow(Expr::Var("b"), Expr::Number("2"))),
                         )),
-                        Expr::FunCall("pow", vec![Expr::Var("c"), Expr::Number("2")]),
+                        expr_inst!(Inst::Pow(Expr::Var("c"), Expr::Number("2"))),
                     )),
                     expr_inst!(Inst::Mul(
                         expr_inst!(Inst::Mul(Expr::Number("2"), Expr::Var("a"))),

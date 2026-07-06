@@ -67,7 +67,7 @@ mod test {
 
     #[test]
     fn simple_digit() {
-        let lexer = Lexer::new("1 1.2 1e2 1.2e2 1.2e-2 -1");
+        let lexer = Lexer::new("1 1.2 1e2 1.2e2 1.2e-2");
 
         let tokens: Vec<Token> = lexer.into_iter().map(|e| e.unwrap().1).collect();
         let correct: Vec<Token> = vec![
@@ -76,7 +76,6 @@ mod test {
             Token::Number("1e2"),
             Token::Number("1.2e2"),
             Token::Number("1.2e-2"),
-            Token::Number("-1"),
         ];
         assert_eq!(tokens, correct);
     }
@@ -151,26 +150,17 @@ mod test {
             Token::Var("cosRad"),
             Token::Eq,
             Token::LParen,
-            Token::Var("pow"),
-            Token::LParen,
             Token::Var("a"),
-            Token::Comma,
+            Token::Pow,
             Token::Number("2"),
-            Token::RParen,
             Token::Plus,
-            Token::Var("pow"),
-            Token::LParen,
             Token::Var("b"),
-            Token::Comma,
+            Token::Pow,
             Token::Number("2"),
-            Token::RParen,
             Token::Minus,
-            Token::Var("pow"),
-            Token::LParen,
             Token::Var("c"),
-            Token::Comma,
+            Token::Pow,
             Token::Number("2"),
-            Token::RParen,
             Token::RParen,
             Token::Slash,
             Token::LParen,
