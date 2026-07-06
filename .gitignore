@@ -6,3 +6,6 @@ build/
 
 # Testing
 Testing/
+
+# Rust
+/target
