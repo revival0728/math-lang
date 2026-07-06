@@ -29,7 +29,7 @@ lexer! {
     pub Lexer(LexerState) -> Token<'input>;
 
     let whitespace = [' ' '\t'];
-    let newline = '\n' | "\n\r";
+    let newline = '\n' | "\r\n";
 
     rule Init {
         $whitespace,
