@@ -5,6 +5,7 @@ edition = "2024"
 authors = ["revival0728"]
 description = "toy scripting language to calculate math"
 homepage = "https://github.com/revival0728/math-lang"
+build = "build.rs"
 
 [dependencies]
 lexgen = "0.16.0"
@@ -12,3 +13,7 @@ lexgen_util = "0.16.0"
 
 [dev-dependencies]
 pretty_assertions = "1.4.1"
+
+[build-dependencies]
+vergen = { version = "10", features = ["build", "cargo", "rustc"] }
+anyhow = "1.0.102"

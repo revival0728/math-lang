@@ -1,3 +1,4 @@
+use crate::error::CompilerError;
 use crate::lexer::{Lexer, Token};
 use lexgen_util::LexerErrorKind;
 
@@ -43,14 +44,6 @@ pub struct Compiler<'input> {
     idnt_tk: Vec<(lexgen_util::Loc, Expr<'input>)>,
     fun_call: Vec<Vec<(lexgen_util::Loc, Token<'input>)>>,
     expr_buf: Vec<(lexgen_util::Loc, Vec<(lexgen_util::Loc, Token<'input>)>)>,
-}
-
-#[derive(Debug, Default, Clone)]
-pub struct CompilerError {
-    pub line: u32,
-    pub col: u32,
-    pub byte_idx: usize,
-    pub msg: String,
 }
 
 impl<'input> Inst<'input> {
@@ -102,33 +95,6 @@ impl<'input> Inst<'input> {
             | Self::Set(lhs, rhs)
             | Self::Pow(lhs, rhs) => (lhs, rhs),
             _ => panic!("compiler internal error!"),
-        }
-    }
-}
-
-impl CompilerError {
-    pub fn new(loc: &lexgen_util::Loc, msg: String) -> Self {
-        CompilerError {
-            line: loc.line,
-            col: loc.col,
-            byte_idx: loc.byte_idx,
-            msg,
-        }
-    }
-    pub fn new_with_loc(loc: &lexgen_util::Loc) -> Self {
-        CompilerError {
-            line: loc.line,
-            col: loc.col,
-            byte_idx: loc.byte_idx,
-            msg: String::new(),
-        }
-    }
-    pub fn new_with_literal(loc: &lexgen_util::Loc, msg: &'static str) -> Self {
-        CompilerError {
-            line: loc.line,
-            col: loc.col,
-            byte_idx: loc.byte_idx,
-            msg: msg.to_string(),
         }
     }
 }

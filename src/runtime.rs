@@ -1,4 +1,5 @@
-use crate::comiler::{Compiler, CompilerError, Expr, Inst};
+use crate::comiler::{Compiler, Expr, Inst};
+use crate::error::{GlobalError, RuntimeError};
 use core::panic;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -6,6 +7,8 @@ use std::convert::{From, Into};
 use std::fmt::Display;
 use std::ops::{Add, Div, Mul, Neg, Sub};
 use std::rc::Rc;
+
+// TODO: write tests for struct Var
 
 #[derive(Debug, Default, PartialEq, PartialOrd, Eq, Ord, Clone, Copy)]
 pub enum VarType {
@@ -23,33 +26,10 @@ pub struct Var {
     data: Vec<u8>,
 }
 
-#[derive(Debug, Default)]
-pub enum RetVar<'scope> {
-    #[default]
-    None,
-    Var(Var),
-    RefVar(&'scope Var),
-    MutRefVar(&'scope mut Var),
-}
-
 #[derive(Debug, Clone, Default)]
 pub struct Fun<'input> {
     para_name: Vec<&'input str>,
     data: Vec<Inst<'input>>,
-}
-
-#[derive(Debug, Default, Clone)]
-pub struct RuntimeError {
-    line: usize,
-    msg: String,
-}
-
-#[derive(Debug, Default, Clone)]
-pub enum GlobalError {
-    #[default]
-    None,
-    RE(RuntimeError),
-    CE(CompilerError),
 }
 
 #[derive(Debug, Default, Clone)]
@@ -63,15 +43,6 @@ pub struct Runtime<'input> {
     builtin: Scope<'input>,
     locals: Vec<Scope<'input>>,
     output: Vec<String>,
-}
-
-impl<'input> Clone for RetVar<'input> {
-    fn clone(&self) -> Self {
-        match self {
-            RetVar::MutRefVar(_) => panic!("runtime internal error!"),
-            var => var.clone(),
-        }
-    }
 }
 
 impl<'input> Var {

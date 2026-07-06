@@ -1,8 +1,11 @@
+mod cli;
 mod comiler;
+mod error;
 mod lexer;
 mod runtime;
 mod test;
 
 fn main() {
-    println!("Hello, world!");
+    let mut cli = cli::CLI::new();
+    cli.run();
 }
