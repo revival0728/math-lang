@@ -6,6 +6,7 @@ authors = ["revival0728"]
 description = "toy scripting language to calculate math"
 homepage = "https://github.com/revival0728/math-lang"
 build = "build.rs"
+readme = "README.md"
 
 [dependencies]
 lexgen = "0.16.0"
