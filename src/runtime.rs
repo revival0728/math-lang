@@ -261,6 +261,7 @@ impl<'input> Runtime<'input> {
 
         // add builtin constant
         global.add_var("pi", Var::from(std::f64::consts::PI));
+        global.add_var("e", Var::from(std::f64::consts::E));
 
         // add builtin functions
         // NOTE: need to handle exec_inst()::BuiltinFnCall(_)
@@ -285,7 +286,20 @@ impl<'input> Runtime<'input> {
                 )
             };
         }
+        add_builtin_fn! { sin(x) };
+        add_builtin_fn! { cos(x) };
+        add_builtin_fn! { tan(x) };
+        add_builtin_fn! { asin(x) };
         add_builtin_fn! { acos(x) };
+        add_builtin_fn! { atan(x) };
+        add_builtin_fn! { abs(x) };
+        add_builtin_fn! { sqrt(x) };
+        add_builtin_fn! { ceil(x) };
+        add_builtin_fn! { floor(x) };
+        add_builtin_fn! { round(x) };
+        add_builtin_fn! { exp(x) };
+        add_builtin_fn! { log(x) };
+        add_builtin_fn! { log2(x) };
 
         // add global scope
         runtime.locals.push(global);
@@ -535,8 +549,20 @@ impl<'input> Runtime<'input> {
                     }};
                 }
                 match name {
+                    &"sin" => handle_arg_1!(sin),
                     &"cos" => handle_arg_1!(cos),
+                    &"tan" => handle_arg_1!(tan),
+                    &"asin" => handle_arg_1!(asin),
                     &"acos" => handle_arg_1!(acos),
+                    &"atan" => handle_arg_1!(atan),
+                    &"abs" => handle_arg_1!(abs),
+                    &"sqrt" => handle_arg_1!(sqrt),
+                    &"ceil" => handle_arg_1!(ceil),
+                    &"floor" => handle_arg_1!(floor),
+                    &"round" => handle_arg_1!(round),
+                    &"exp" => handle_arg_1!(exp),
+                    &"log" => handle_arg_1!(log10),
+                    &"log2" => handle_arg_1!(log2),
                     _ => panic!("runtime internal error!"),
                 }
             }

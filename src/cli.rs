@@ -1,14 +1,24 @@
 use crate::runtime::Runtime;
+use clap::Parser;
 use std::io;
 use std::io::prelude::*;
+use std::path::PathBuf;
 
 // TODO: improve and fix error message
+
+#[derive(Parser)]
+#[command(version, about, long_about = None)]
+struct ExArgs {
+    /// Path of source file
+    source: Option<PathBuf>,
+}
 
 pub struct CLI<'cli> {
     info: String,
     line_prefix: String,
     input: Vec<Box<str>>,
     runtime: Runtime<'cli>,
+    args: ExArgs,
 }
 
 impl<'cli> CLI<'cli> {
@@ -23,15 +33,45 @@ impl<'cli> CLI<'cli> {
         let line_prefix = format!(">> ");
         let input = Vec::new();
         let runtime = Runtime::new();
+        let args = ExArgs::parse();
 
         Self {
             info,
             line_prefix,
             input,
             runtime,
+            args,
         }
     }
+    fn exec_source(&mut self, source: String) {
+        let source = Box::leak(source.into_boxed_str());
+        unsafe {
+            self.input.push(Box::from_raw(source));
+        }
+        match self.runtime.execute(source) {
+            Ok(output) => {
+                if let Some(out) = output.last() {
+                    println!("{}", out);
+                }
+            }
+            Err(err) => {
+                println!("{}", err.all_info());
+            }
+        };
+    }
     pub fn run(&mut self) {
+        if let Some(source) = self.args.source.clone() {
+            let source = match std::fs::read_to_string(source) {
+                Ok(s) => s,
+                Err(e) => {
+                    println!("File Error: {}", e);
+                    return;
+                }
+            };
+            self.exec_source(source);
+            return;
+        }
+
         println!("{}", self.info);
         loop {
             print!("{}", self.line_prefix);
@@ -47,20 +87,7 @@ impl<'cli> CLI<'cli> {
             if input.trim() == "quit" || input.trim() == "exit" {
                 break;
             }
-            let source = Box::leak(input.into_boxed_str());
-            unsafe {
-                self.input.push(Box::from_raw(source));
-            }
-            match self.runtime.execute(source) {
-                Ok(output) => {
-                    if let Some(out) = output.last() {
-                        println!("{}", out);
-                    }
-                }
-                Err(err) => {
-                    println!("{}", err.all_info());
-                }
-            };
+            self.exec_source(input);
         }
     }
 }
