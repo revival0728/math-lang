@@ -10,7 +10,7 @@ Toy scripting language to calculate math
 
 make sure you have installed `rustc` and `cargo`
 
-using the [rustup]("https://rustup.rs") will be helpful
+using the [rustup](https://rustup.rs) will be helpful
 
 ```bash
 git clone https://github.com/revival0728/math-lang.git
@@ -64,6 +64,18 @@ fun-call = [fun-name]([[] | [expr] | [expr], ...])
 
 You can checkout MLS script exmaples in the [`examples/`](/examples/) folder.
 
+## Type System
+
+types are automatically determined, depends on precision and size of value
+
+```
+BigNum > f64 > i64 > i32
+```
+
+where `f64`, `i64`, `i32` are Rust primitve types, `BigNum` is used only when precision or size of value is required
+
+`BigNum` is not implemented yet
+
 ## Builtins
 
 ### Constants
@@ -77,19 +89,22 @@ You can checkout MLS script exmaples in the [`examples/`](/examples/) folder.
 
 | name | document |
 |------|----------|
-| sin(x) | `CPP` `<cmath>` function |
-| cos(x) | `CPP` `<cmath>` function |
-| tan(x) | `CPP` `<cmath>` function |
-| asin(x) | `CPP` `<cmath>` function |
-| acos(x) | `CPP` `<cmath>` function |
-| atan(x) | `CPP` `<cmath>` function |
-| abs(x) | `CPP` `<cmath>` function |
-| sqrt(x) | `CPP` `<cmath>` function |
-| ceil(x) | `CPP` `<cmath>` function |
-| floor(x) | `CPP` `<cmath>` function |
-| round(x) | `CPP` `<cmath>` function |
-| exp(x) | `CPP` `<cmath>` function |
-| log(x) | `CPP` `<cmath>` function (`log10`) |
+| sin(x) | `Rust` function |
+| cos(x) | `Rust` function |
+| tan(x) | `Rust` function |
+| asin(x) | `Rust` function |
+| acos(x) | `Rust` function |
+| atan(x) | `Rust` function |
+| abs(x) | `Rust` function |
+| sqrt(x) | `Rust` function |
+| ceil(x) | `Rust` function |
+| floor(x) | `Rust` function |
+| round(x) | `Rust` function |
+| exp(x) | `Rust` function |
+| log(x) | `Rust` function (`log10`) |
+| log2(x) | `Rust` function (`log2`) |
+
+- using `f64::builtin(x)` for all Rust primitive types
 
 ### Breaking Changes
 - remove `trunc(x)` and `cbrt(x)`
