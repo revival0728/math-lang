@@ -120,7 +120,7 @@ which is in [-1.7976931348623157e+308, 1.7976931348623157e+308]
 | exp(x) | `Rust` function |
 | log(x) | `Rust` function (`log10`) |
 | log2(x) | `Rust` function (`log2`) |
-| ln(x) | `Rust` function (`log(x, std::i64::consts::E)`) |
+| ln(x) | `Rust` function (`log(x, std::f64::consts::E)`) |
 | trunc(x) | `Rust` function, return integer part of the argument |
 | cbrt(x) | `Rust` function, return cube root of the argument |
 

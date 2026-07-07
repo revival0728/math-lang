@@ -72,27 +72,23 @@ impl<'input> Runtime<'input> {
     pub fn new() -> Self {
         let mut runtime = Self::default();
 
-        let mut global = Scope::default();
-
         // add builtin constant
-        global.add_var("pi", Var::from(PI));
-        global.add_var("e", Var::from(E));
+        runtime.builtin.add_var("pi", Var::from(PI));
+        runtime.builtin.add_var("e", Var::from(E));
 
         // add builtin functions
         // NOTE: need to handle exec_inst()::BuiltinFnCall(_)
         macro_rules! group_to_literal {
-            // Matches a comma-separated list of identifiers
             ( $($arg:ident),* ) => {
-                concat!( $( stringify!($arg) ),* ) // No spaces
+                concat!( $( stringify!($arg) ),* )
             };
-            // Matches space or comma-separated tokens with spaces in between
             ( $($arg:tt)* ) => {
                 concat!( $( stringify!($arg) ),* )
             };
         }
         macro_rules! add_builtin_fn {
             ($name:ident($($para:ident),*)) => {
-                global.set_fun(
+                runtime.builtin.set_fun(
                     stringify!($name),
                     Fun {
                         para_name: vec![group_to_literal!($($para),*)],
@@ -120,6 +116,7 @@ impl<'input> Runtime<'input> {
         add_builtin_fn! { cbrt(x) };
 
         // add global scope
+        let mut global = Scope::default();
         runtime.locals.push(global);
 
         runtime
