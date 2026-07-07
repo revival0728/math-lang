@@ -470,7 +470,7 @@ mod test {
         runtime.execute("a = 2").unwrap();
         runtime.execute("b = 3").unwrap();
         let output = runtime.execute(simple_expr::expr_3()).unwrap();
-        let correct = vec!["1", "2", "3", "1024.03704"]
+        let correct = vec!["1", "2", "3", "1024.0370370"]
             .iter()
             .map(|s| s.to_string())
             .collect::<Vec<String>>();
@@ -494,7 +494,7 @@ mod test {
         let source = examples::cosine_law();
         let mut runtime = Runtime::new();
         let output = runtime.execute(&source).unwrap();
-        let correct = vec!["60.00000"]
+        let correct = vec!["60.0000000"]
             .iter()
             .map(|s| s.to_string())
             .collect::<Vec<String>>();
