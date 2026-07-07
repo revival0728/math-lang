@@ -24,6 +24,7 @@ pub enum Inst<'input> {
     Div(Expr<'input>, Expr<'input>),
     Mul(Expr<'input>, Expr<'input>),
     Pow(Expr<'input>, Expr<'input>),
+    Mod(Expr<'input>, Expr<'input>),
     BultinFnCall(&'input str),
 }
 
@@ -55,6 +56,7 @@ impl<'input> Inst<'input> {
             Token::Slash => Self::Div(lhs, rhs),
             Token::Eq => Self::Set(lhs, rhs),
             Token::Pow => Self::Pow(lhs, rhs),
+            Token::Mod => Self::Mod(lhs, rhs),
             _ => panic!("compiler internal error!"),
         }
     }
@@ -78,12 +80,13 @@ impl<'input> Inst<'input> {
                 panic!("compiler internal error!")
             }
             Inst::Set(_, _) => 0,
-            Inst::Add(_, _) => 1,
-            Inst::Sub(_, _) => 1,
-            Inst::Mul(_, _) => 2,
-            Inst::Div(_, _) => 2,
-            Inst::Pow(_, _) => 3,
-            Inst::Neg(_) => 4,
+            Inst::Mod(_, _) => 1,
+            Inst::Add(_, _) => 2,
+            Inst::Sub(_, _) => 2,
+            Inst::Mul(_, _) => 3,
+            Inst::Div(_, _) => 3,
+            Inst::Pow(_, _) => 4,
+            Inst::Neg(_) => 5,
         }
     }
     pub fn get_binary_exprs(&mut self) -> (&mut Expr<'input>, &mut Expr<'input>) {
@@ -93,7 +96,8 @@ impl<'input> Inst<'input> {
             | Self::Mul(lhs, rhs)
             | Self::Div(lhs, rhs)
             | Self::Set(lhs, rhs)
-            | Self::Pow(lhs, rhs) => (lhs, rhs),
+            | Self::Pow(lhs, rhs)
+            | Self::Mod(lhs, rhs) => (lhs, rhs),
             _ => panic!("compiler internal error!"),
         }
     }
@@ -126,7 +130,7 @@ impl<'input> Compiler<'input> {
 
         self.expr_buf.push((lexgen_util::Loc::default(), vec![]));
 
-        let mut to_neg_sign = false;
+        let mut to_neg_sign = true;
         let mut to_add_mul = false;
         let mut to_make_func = false;
         let mut to_push_token;
@@ -160,11 +164,13 @@ impl<'input> Compiler<'input> {
                 | Token::Plus
                 | Token::Minus
                 | Token::Star
-                | Token::Slash => {
+                | Token::Slash
+                | Token::Mod => {
                     to_add_mul = false;
                     to_make_func = false;
                     if token == Token::Minus && to_neg_sign {
                         to_neg_sign = false;
+                        to_push_token = false;
                         self.expr_buf
                             .last_mut()
                             .unwrap()
@@ -272,33 +278,25 @@ impl<'input> Compiler<'input> {
             .push((lexgen_util::Loc::default(), Token::None));
 
         macro_rules! handle_comma_err {
-            ($lloc:ident) => {{
-                return Err(CompilerError::new_with_literal(
-                    &$lloc,
-                    "comma found outside function call",
-                ));
-            }};
+            ($lloc:ident) => {{}};
         }
 
         let (rloc, tokens) = self.expr_buf.pop().unwrap();
         for (lloc, token) in tokens {
             if self.state.in_paren > 0 {
+                macro_rules! push_token {
+                    ($token:expr) => {{
+                        self.expr_buf.last_mut().unwrap().1.push((lloc, $token));
+                    }};
+                }
                 match token {
                     Token::LParen => {
                         self.state.in_paren += 1;
-                        self.expr_buf
-                            .last_mut()
-                            .unwrap()
-                            .1
-                            .push((lloc, Token::LParen));
+                        push_token!(Token::LParen);
                     }
                     Token::FunCall(name) => {
                         self.state.in_paren += 1;
-                        self.expr_buf
-                            .last_mut()
-                            .unwrap()
-                            .1
-                            .push((lloc, Token::FunCall(name)));
+                        push_token!(Token::FunCall(name));
                     }
                     Token::RParen => {
                         self.state.in_paren -= 1;
@@ -306,80 +304,36 @@ impl<'input> Compiler<'input> {
                             let expr = self.parse_expr()?;
                             self.idnt_tk.push((lloc, expr));
                         } else {
-                            self.expr_buf
-                                .last_mut()
-                                .unwrap()
-                                .1
-                                .push((lloc, Token::RParen));
+                            push_token!(Token::RParen);
                         }
                     }
-                    Token::Comma => self
-                        .expr_buf
-                        .last_mut()
-                        .unwrap()
-                        .1
-                        .push((lloc, Token::Comma)),
-                    Token::Plus => self
-                        .expr_buf
-                        .last_mut()
-                        .unwrap()
-                        .1
-                        .push((lloc, Token::Plus)),
-                    Token::Minus => self
-                        .expr_buf
-                        .last_mut()
-                        .unwrap()
-                        .1
-                        .push((lloc, Token::Minus)),
-                    Token::Star => self
-                        .expr_buf
-                        .last_mut()
-                        .unwrap()
-                        .1
-                        .push((lloc, Token::Star)),
-                    Token::Slash => self
-                        .expr_buf
-                        .last_mut()
-                        .unwrap()
-                        .1
-                        .push((lloc, Token::Slash)),
-                    Token::NegSign => self
-                        .expr_buf
-                        .last_mut()
-                        .unwrap()
-                        .1
-                        .push((lloc, Token::NegSign)),
-                    Token::Eq => self.expr_buf.last_mut().unwrap().1.push((lloc, Token::Eq)),
-                    Token::Pow => self.expr_buf.last_mut().unwrap().1.push((lloc, Token::Pow)),
-                    Token::Var(name) => self
-                        .expr_buf
-                        .last_mut()
-                        .unwrap()
-                        .1
-                        .push((lloc, Token::Var(name))),
-                    Token::Number(data) => self
-                        .expr_buf
-                        .last_mut()
-                        .unwrap()
-                        .1
-                        .push((lloc, Token::Number(data))),
+                    Token::Comma
+                    | Token::Plus
+                    | Token::Minus
+                    | Token::Star
+                    | Token::Slash
+                    | Token::NegSign
+                    | Token::Pow
+                    | Token::Mod
+                    | Token::Eq
+                    | Token::Var(_)
+                    | Token::Number(_) => push_token!(token),
                     Token::None | Token::Newline => panic!("compiler internal error!"),
                 }
             } else if self.state.in_funcall > 0 {
+                macro_rules! push_token {
+                    ($token:expr) => {{
+                        self.fun_call.last_mut().unwrap().push((lloc, $token));
+                    }};
+                }
                 match token {
                     Token::FunCall(name) => {
                         self.state.in_funcall += 1;
-                        self.fun_call
-                            .last_mut()
-                            .unwrap()
-                            .push((lloc, Token::FunCall(name)));
+                        push_token!(Token::FunCall(name));
                     }
                     Token::LParen => {
                         self.state.in_funcall += 1;
-                        self.fun_call
-                            .last_mut()
-                            .unwrap()
-                            .push((lloc, Token::LParen));
+                        push_token!(Token::LParen);
                     }
                     Token::RParen => {
                         self.state.in_funcall -= 1;
@@ -387,36 +341,22 @@ impl<'input> Compiler<'input> {
                             let expr = self.parse_funcall()?;
                             self.idnt_tk.push((lloc, expr));
                         } else {
-                            self.fun_call
-                                .last_mut()
-                                .unwrap()
-                                .push((lloc, Token::RParen));
+                            push_token!(Token::RParen);
                         }
                     }
                     Token::Comma => {
                         self.fun_call.push(vec![]);
                     }
-                    Token::Plus => self.fun_call.last_mut().unwrap().push((lloc, Token::Plus)),
-                    Token::Minus => self.fun_call.last_mut().unwrap().push((lloc, Token::Minus)),
-                    Token::Star => self.fun_call.last_mut().unwrap().push((lloc, Token::Star)),
-                    Token::Slash => self.fun_call.last_mut().unwrap().push((lloc, Token::Slash)),
-                    Token::NegSign => self
-                        .fun_call
-                        .last_mut()
-                        .unwrap()
-                        .push((lloc, Token::NegSign)),
-                    Token::Eq => self.fun_call.last_mut().unwrap().push((lloc, Token::Eq)),
-                    Token::Pow => self.fun_call.last_mut().unwrap().push((lloc, Token::Pow)),
-                    Token::Var(name) => self
-                        .fun_call
-                        .last_mut()
-                        .unwrap()
-                        .push((lloc, Token::Var(name))),
-                    Token::Number(data) => self
-                        .fun_call
-                        .last_mut()
-                        .unwrap()
-                        .push((lloc, Token::Number(data))),
+                    Token::Plus
+                    | Token::Minus
+                    | Token::Star
+                    | Token::Slash
+                    | Token::NegSign
+                    | Token::Pow
+                    | Token::Mod
+                    | Token::Eq
+                    | Token::Var(_)
+                    | Token::Number(_) => push_token!(token),
                     Token::None | Token::Newline => panic!("compiler internal error!"),
                 }
             } else {
@@ -433,14 +373,20 @@ impl<'input> Compiler<'input> {
                         self.fun_call.push(vec![(lloc, Token::Var(name))]);
                         self.fun_call.push(vec![]);
                     }
-                    Token::Comma => handle_comma_err!(lloc),
-                    Token::Plus => self.oper_tk.push((lloc, Token::Plus)),
-                    Token::Minus => self.oper_tk.push((lloc, Token::Minus)),
-                    Token::Star => self.oper_tk.push((lloc, Token::Star)),
-                    Token::Slash => self.oper_tk.push((lloc, Token::Slash)),
-                    Token::Pow => self.oper_tk.push((lloc, Token::Pow)),
-                    Token::NegSign => self.oper_tk.push((lloc, Token::NegSign)),
-                    Token::Eq => self.oper_tk.push((lloc, Token::Eq)),
+                    Token::Comma => {
+                        return Err(CompilerError::new_with_literal(
+                            &lloc,
+                            "comma found outside function call",
+                        ));
+                    }
+                    Token::Plus
+                    | Token::Minus
+                    | Token::Star
+                    | Token::Slash
+                    | Token::Pow
+                    | Token::Mod
+                    | Token::NegSign
+                    | Token::Eq => self.oper_tk.push((lloc, token)),
                     Token::Var(name) => self.idnt_tk.push((lloc, Expr::Var(name))),
                     Token::Number(data) => self.idnt_tk.push((lloc, Expr::Number(data))),
                     Token::None | Token::Newline => panic!("compiler internal error!"),
@@ -498,16 +444,40 @@ impl<'input> Compiler<'input> {
                             "expected identifier or expression",
                         ));
                     };
-                    self.state.expr_depth = 0;
-                    let inst = Box::new(Inst::Neg(idnt));
-                    self.idnt_tk.push((lloc, Expr::Inst(inst)));
+                    if let Expr::Inst(inst) = idnt {
+                        let mut cur_inst = Inst::Neg(Expr::None);
+                        let mut inst = *inst;
+                        let mut prv_inst = &mut inst;
+                        let expr_depth = self.state.expr_depth;
+                        self.state.expr_depth = 1;
+                        for _ in 1..expr_depth {
+                            if prv_inst.priority() > cur_inst.priority() {
+                                break;
+                            }
+                            self.state.expr_depth += 1;
+                            let (sub_lhs, _sub_rhs) = prv_inst.get_binary_exprs();
+                            let Expr::Inst(nxt_inst) = sub_lhs else {
+                                panic!("compiler internal error!")
+                            };
+                            prv_inst = nxt_inst.as_mut();
+                        }
+                        self.state.expr_depth += 1;
+                        let (sub_lhs, _sub_rhs) = prv_inst.get_binary_exprs();
+                        cur_inst = Inst::Neg(sub_lhs.clone());
+                        *sub_lhs = Expr::Inst(Box::new(cur_inst));
+                        self.idnt_tk.push((lloc, Expr::Inst(Box::new(inst))));
+                    } else {
+                        let inst = Box::new(Inst::Neg(idnt));
+                        self.idnt_tk.push((lloc, Expr::Inst(inst)));
+                    }
                 }
                 Token::Plus
                 | Token::Minus
                 | Token::Star
                 | Token::Slash
                 | Token::Pow
-                | Token::Eq => {
+                | Token::Eq
+                | Token::Mod => {
                     let Some((_rhs_loc, rhs)) = self.idnt_tk.pop() else {
                         return Err(CompilerError::new_with_literal(
                             &lloc,

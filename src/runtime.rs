@@ -1,30 +1,13 @@
 use crate::comiler::{Compiler, Expr, Inst};
 use crate::error::{GlobalError, RuntimeError};
-use core::panic;
+use crate::var::{Var, VarType};
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::convert::{From, Into};
-use std::fmt::Display;
-use std::ops::{Add, Div, Mul, Neg, Sub};
+use std::convert::Into;
 use std::rc::Rc;
 
-// TODO: write tests for struct Var
-
-#[derive(Debug, Default, PartialEq, PartialOrd, Eq, Ord, Clone, Copy)]
-pub enum VarType {
-    #[default]
-    None,
-    I32,
-    I64,
-    F64,
-    BigNum,
-}
-
-#[derive(Debug, Default, Clone)]
-pub struct Var {
-    type_: VarType,
-    data: Vec<u8>,
-}
+const PI: f64 = std::f64::consts::PI;
+const E: f64 = std::f64::consts::E;
 
 #[derive(Debug, Clone, Default)]
 pub struct Fun<'input> {
@@ -43,174 +26,6 @@ pub struct Runtime<'input> {
     builtin: Scope<'input>,
     locals: Vec<Scope<'input>>,
     output: Vec<String>,
-}
-
-impl<'input> Var {
-    pub fn none() -> Self {
-        Self::default()
-    }
-    pub fn new(value: &'input str) -> Option<Self> {
-        macro_rules! try_parse {
-            ($rust_type:ident, $var_type:ident, $bytes_of_type:literal) => {
-                if let Ok(parsed) = value.parse::<$rust_type>() {
-                    let bytes = parsed.to_le_bytes();
-                    let data = Vec::from(bytes);
-                    return Some(Self {
-                        type_: VarType::$var_type,
-                        data,
-                    });
-                }
-            };
-        }
-        try_parse!(i32, I32, 4);
-        try_parse!(i64, I64, 8);
-        try_parse!(f64, F64, 8);
-        // TODO: implement BigNum
-        None
-    }
-}
-
-macro_rules! impl_from_for_var {
-    ($rust_type:ident, $var_type:ident) => {
-        impl From<$rust_type> for Var {
-            fn from(value: $rust_type) -> Self {
-                Self {
-                    type_: VarType::$var_type,
-                    data: Vec::from(value.to_le_bytes()),
-                }
-            }
-        }
-    };
-}
-impl_from_for_var!(i32, I32);
-impl_from_for_var!(i64, I64);
-impl_from_for_var!(f64, F64);
-
-impl Into<i32> for &Var {
-    fn into(self) -> i32 {
-        match self.type_ {
-            VarType::BigNum => panic!("need BigNum implementation"),
-            VarType::None => panic!("runtime internal error!"),
-            VarType::I32 => i32::from_le_bytes(self.data[0..4].try_into().unwrap()).into(),
-            _ => panic!("runtime internal error!"),
-        }
-    }
-}
-
-impl Into<i64> for &Var {
-    fn into(self) -> i64 {
-        match self.type_ {
-            VarType::BigNum => panic!("need BigNum implementation"),
-            VarType::None => panic!("runtime internal error!"),
-            VarType::I32 => i32::from_le_bytes(self.data[0..4].try_into().unwrap()).into(),
-            VarType::I64 => i64::from_le_bytes(self.data[0..8].try_into().unwrap()).into(),
-            _ => panic!("runtime internal error!"),
-        }
-    }
-}
-
-// FIXME: i64 to f64 may cause overflow, change to BigNum instead
-impl Into<f64> for &Var {
-    fn into(self) -> f64 {
-        match self.type_ {
-            VarType::BigNum => panic!("need BigNum implementation"),
-            VarType::None => panic!("runtime internal error!"),
-            VarType::I32 => i32::from_le_bytes(self.data[0..4].try_into().unwrap()).into(),
-            VarType::I64 => i64::from_le_bytes(self.data[0..8].try_into().unwrap()) as f64,
-            VarType::F64 => f64::from_le_bytes(self.data[0..8].try_into().unwrap()).into(),
-        }
-    }
-}
-
-// TODO: fixed f64, i64 higher type problem
-#[rustfmt::skip]
-macro_rules! impl_operation_for_var {
-    ($oper:ident, $fname:ident, $checked_fn:ident, $ensure_op:tt, $min_type:ident) => {
-        impl $oper<&Var> for &Var {
-            type Output = Var;
-            fn $fname(self, rhs: &Var) -> Self::Output {
-                macro_rules! impl_integer {
-                    ($ltype:ident, $utype:ident) => {{
-                        let l: $ltype = self.into();
-                        let r: $ltype = rhs.into();
-                        if let Some(v) = l.$checked_fn(r) {
-                            Var::from(v)
-                        } else {
-                            let l: $utype = self.into();
-                            let r: $utype = rhs.into();
-                            Var::from(l $ensure_op r)
-                        }
-                    }};
-                }
-                match std::cmp::max(VarType::$min_type, std::cmp::max(self.type_, rhs.type_)) {
-                    VarType::None | VarType::BigNum => panic!("runtime internal error!"),
-                    VarType::I32 => impl_integer!(i32, i64),
-                    VarType::I64 => impl_integer!(i64, f64),
-                    VarType::F64 => {
-                        let l: f64 = self.into();
-                        let r: f64 = rhs.into();
-                        Var::from(l.$fname(r))
-                    }
-                }
-            }
-        }
-    };
-}
-impl_operation_for_var!(Add, add, checked_add, +, None);
-impl_operation_for_var!(Sub, sub, checked_sub, -, None);
-impl_operation_for_var!(Mul, mul, checked_mul, *, None);
-impl_operation_for_var!(Div, div, checked_div, /, F64);
-
-// TODO: optimized implementation
-impl Neg for &Var {
-    type Output = Var;
-    fn neg(self) -> Self::Output {
-        macro_rules! impl_for_integer {
-            ($rust_type:ident, $utype:ident) => {{
-                let v: $rust_type = self.into();
-                if let Some(v) = v.checked_neg() {
-                    Var::from(v)
-                } else {
-                    let v: $utype = self.into();
-                    Var::from(-v)
-                }
-            }};
-        }
-        macro_rules! impl_for_float {
-            ($rust_type:ident) => {{
-                let v: $rust_type = self.into();
-                Var::from(-v)
-            }};
-        }
-        match self.type_ {
-            VarType::None => panic!("runtime internal error!"),
-            VarType::I32 => impl_for_integer!(i32, i64),
-            VarType::I64 => impl_for_integer!(i64, f64),
-            VarType::F64 => impl_for_float!(f64),
-            VarType::BigNum => panic!("missing BigNum implementation"),
-        }
-    }
-}
-
-// TODO: implement BigNum display
-impl Display for Var {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self.type_ {
-            VarType::None | VarType::BigNum => panic!("runtime internal error!"),
-            VarType::I32 => {
-                let v: i32 = self.into();
-                write!(f, "{}", v)
-            }
-            VarType::I64 => {
-                let v: i64 = self.into();
-                write!(f, "{}", v)
-            }
-            VarType::F64 => {
-                let v: f64 = self.into();
-                write!(f, "{:.05}", v)
-            }
-        }
-    }
 }
 
 impl<'input> Scope<'input> {
@@ -260,8 +75,8 @@ impl<'input> Runtime<'input> {
         let mut global = Scope::default();
 
         // add builtin constant
-        global.add_var("pi", Var::from(std::f64::consts::PI));
-        global.add_var("e", Var::from(std::f64::consts::E));
+        global.add_var("pi", Var::from(PI));
+        global.add_var("e", Var::from(E));
 
         // add builtin functions
         // NOTE: need to handle exec_inst()::BuiltinFnCall(_)
@@ -300,6 +115,9 @@ impl<'input> Runtime<'input> {
         add_builtin_fn! { exp(x) };
         add_builtin_fn! { log(x) };
         add_builtin_fn! { log2(x) };
+        add_builtin_fn! { ln(x) };
+        add_builtin_fn! { trunc(x) };
+        add_builtin_fn! { cbrt(x) };
 
         // add global scope
         runtime.locals.push(global);
@@ -453,6 +271,7 @@ impl<'input> Runtime<'input> {
             Inst::Sub(lhs, rhs) => handle_binary!(lhs - rhs),
             Inst::Mul(lhs, rhs) => handle_binary!(lhs * rhs),
             Inst::Div(lhs, rhs) => handle_binary!(lhs / rhs),
+            Inst::Mod(lhs, rhs) => handle_binary!(lhs % rhs),
             Inst::Set(lhs, rhs) => match lhs {
                 Expr::None => panic!("compiler internal error (in runtime)"),
                 Expr::Var(name) => {
@@ -534,14 +353,14 @@ impl<'input> Runtime<'input> {
             }
             Inst::BultinFnCall(name) => {
                 macro_rules! handle_arg_1 {
-                    ($rust_fn:ident) => {{
+                    ($rust_fn:ident $(, $default_args:expr),*) => {{
                         let scope = self.locals.last_mut().expect("runtime internal error!");
                         let Some(x) = scope.get_var("x") else {
                             panic!("runtime internal error!")
                         };
                         if x.borrow().type_ <= VarType::F64 {
                             let x: f64 = (&*x.borrow()).into();
-                            Ok(Rc::new(RefCell::new(Var::from(x.$rust_fn()))))
+                            Ok(Rc::new(RefCell::new(Var::from(x.$rust_fn($($default_args),*)))))
                         } else {
                             //TODO: add BigNum implemntation
                             todo!("add BigNum implementation")
@@ -563,6 +382,9 @@ impl<'input> Runtime<'input> {
                     &"exp" => handle_arg_1!(exp),
                     &"log" => handle_arg_1!(log10),
                     &"log2" => handle_arg_1!(log2),
+                    &"ln" => handle_arg_1!(log, E),
+                    &"trunc" => handle_arg_1!(trunc),
+                    &"cbrt" => handle_arg_1!(cbrt),
                     _ => panic!("runtime internal error!"),
                 }
             }
@@ -572,9 +394,41 @@ impl<'input> Runtime<'input> {
 
 #[cfg(test)]
 mod test {
+    use super::Runtime;
     use crate::test::{examples, simple_expr};
 
-    use super::Runtime;
+    #[test]
+    fn inst_mod_1() {
+        let mut runtime = Runtime::new();
+        runtime.execute("10 mod 2").unwrap();
+        runtime.execute("10 mod 3").unwrap();
+        runtime.execute("10 mod -3").unwrap();
+        runtime.execute("-10 mod -3").unwrap();
+        runtime.execute("-10 mod 3").unwrap();
+        let output = &runtime.output;
+        let correct = vec!["0", "1", "1", "2", "2"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect::<Vec<String>>();
+        assert_eq!(output, &correct);
+    }
+
+    #[test]
+    fn inst_mod_2() {
+        let mut runtime = Runtime::new();
+        runtime
+            .execute("ans = ((1 * 2 + 3) * 4) + 5 * 6 + 7 mod 2")
+            .unwrap();
+        runtime
+            .execute("ans = (1 mod 3) + (2 mod 3) mod 3")
+            .unwrap();
+        let output = &runtime.output;
+        let correct = vec!["1", "0"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect::<Vec<String>>();
+        assert_eq!(output, &correct);
+    }
 
     #[test]
     fn simple_one_plus_one() {

@@ -47,8 +47,8 @@ Options:
 ## Language Syntax
 ```
 rnum = [raw-number] | [scientific-notation]
-idnt = [user-defined-variable] | [builtins] | [rnum]
-b_op = [+][-][*][/][^][=]
+idnt = [user-defined-variable] | [builtin-constants] | [rnum]
+b_op = [+][-][*][/][^][=][mod]
 s_op = [-]
 expr = [idnt] |
        [fun-call] |
@@ -64,6 +64,17 @@ fun-call = [fun-name]([[] | [expr] | [expr], ...])
 
 You can checkout MLS script exmaples in the [`examples/`](/examples/) folder.
 
+## About Operator
+
+### Precedence
+
+```
+(s_op)(-) > (^) > (/) = (*) > (b_op)(-) = (+) > (mod) > (=)
+```
+
+### Notice
+- `mod`: calculates euclid remainder, which is `r` and `0 <= r < abs(rhs)`
+
 ## Type System
 
 types are automatically determined, depends on precision and size of value
@@ -73,6 +84,12 @@ BigNum > f64 > i64 > i32
 ```
 
 where `f64`, `i64`, `i32` are Rust primitve types, `BigNum` is used only when precision or size of value is required
+
+### Value Limit
+
+currently values are limited by Rust primitive type `f64`, will change after implementing `BigNum`
+
+which is in [-1.7976931348623157e+308, 1.7976931348623157e+308]
 
 `BigNum` is not implemented yet
 
@@ -103,17 +120,19 @@ where `f64`, `i64`, `i32` are Rust primitve types, `BigNum` is used only when pr
 | exp(x) | `Rust` function |
 | log(x) | `Rust` function (`log10`) |
 | log2(x) | `Rust` function (`log2`) |
+| ln(x) | `Rust` function (`log(x, std::i64::consts::E)`) |
+| trunc(x) | `Rust` function, return integer part of the argument |
+| cbrt(x) | `Rust` function, return cube root of the argument |
 
 - using `f64::builtin(x)` for all Rust primitive types
 
 ### Breaking Changes
-- remove `trunc(x)` and `cbrt(x)`
-- temporary remove `ln(x)` and `mod(a, b)` due to reimplement
-- `pow(a, b)` is now `a^b`
-- `lg(x)` is now `log2(x)`
+- remove `mod(a, b)`, use `a mod b` instead
+- remove `pow(a, b)`, use `a^b` instead
+- rename `lg(x)` to `log2(x)`
 
 ## TODO
 - [ ] implement BigNum
 - [ ] improve error message
 - [ ] fix i64 and f64 overflow problem
-- [ ] add ln(x) and mod(a, b)
+- [ ] add custom precision output

@@ -24,7 +24,7 @@ pub struct CLI<'cli> {
 impl<'cli> CLI<'cli> {
     pub fn new() -> Self {
         let info = format!(
-            "Math-Lang {} [{} rustc-{} on {}]",
+            "Math-Lang {} [{} rustc-{}] on {}",
             env!("CARGO_PKG_VERSION"),
             env!("VERGEN_BUILD_DATE"),
             env!("VERGEN_RUSTC_SEMVER"),
@@ -43,7 +43,7 @@ impl<'cli> CLI<'cli> {
             args,
         }
     }
-    fn exec_source(&mut self, source: String) {
+    fn exec_source(&mut self, source: String, loc_info: bool) {
         let source = Box::leak(source.into_boxed_str());
         unsafe {
             self.input.push(Box::from_raw(source));
@@ -55,7 +55,14 @@ impl<'cli> CLI<'cli> {
                 }
             }
             Err(err) => {
-                println!("{}", err.all_info());
+                println!(
+                    "{}",
+                    if loc_info {
+                        err.all_info()
+                    } else {
+                        err.no_loc_info()
+                    }
+                );
             }
         };
     }
@@ -68,7 +75,7 @@ impl<'cli> CLI<'cli> {
                     return;
                 }
             };
-            self.exec_source(source);
+            self.exec_source(source, true);
             return;
         }
 
@@ -87,7 +94,7 @@ impl<'cli> CLI<'cli> {
             if input.trim() == "quit" || input.trim() == "exit" {
                 break;
             }
-            self.exec_source(input);
+            self.exec_source(input, false);
         }
     }
 }

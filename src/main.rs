@@ -4,6 +4,7 @@ mod error;
 mod lexer;
 mod runtime;
 mod test;
+mod var;
 
 fn main() {
     let mut cli = cli::CLI::new();

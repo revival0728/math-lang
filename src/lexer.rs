@@ -9,6 +9,7 @@ pub enum Token<'input> {
     Minus,
     Star,
     Slash,
+    Mod,
     Eq,
     LParen,
     RParen,
@@ -43,6 +44,7 @@ lexer! {
         "(" = Token::LParen,
         ")" = Token::RParen,
         "," = Token::Comma,
+        "mod" = Token::Mod,
         $newline = Token::Newline,
 
         let var_init = ['a'-'z' 'A'-'Z' '_'];
