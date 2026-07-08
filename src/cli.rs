@@ -100,6 +100,9 @@ impl<'cli> CLI<'cli> {
                 Ok(_) => {}
                 Err(e) => println!("IO Error: {}", e),
             };
+            if input.trim().is_empty() {
+                continue;
+            }
             if input.trim() == "quit" || input.trim() == "exit" {
                 break;
             }
