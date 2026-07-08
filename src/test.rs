@@ -14,6 +14,9 @@ pub mod examples {
     pub fn cosine_law() -> String {
         get("cosine-law.mls")
     }
+    pub fn fib() -> String {
+        get("fib.mls")
+    }
 }
 
 #[cfg(test)]
