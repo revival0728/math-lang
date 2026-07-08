@@ -1,0 +1,64 @@
+name: Build release binary on multiple platforms
+
+on:
+  push:
+      tags:
+        - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      # Set fail-fast to false to ensure that feedback is delivered for all matrix combinations. Consider changing this to true when your workflow is stable.
+      fail-fast: false
+
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        build_type: [release]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set reusable strings
+      # Turn repeated input strings (such as the build output directory) into step outputs. These step outputs can be used throughout the workflow file.
+      id: strings
+      shell: bash
+      working-directory: ${{ github.workspace }}
+      run: |
+        echo "build-output-dir=${{ github.workspace }}/build" >> "$GITHUB_OUTPUT"
+        if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+          echo "math-lang-bin=math-lang-windows-x86_64.exe" >> "$GITHUB_OUTPUT"
+        fi
+        if [[ "${{ matrix.os }}" == "ubuntu-latest" ]]; then
+          echo "math-lang-bin=math-lang-linux-x86_64" >> "$GITHUB_OUTPUT"
+        fi
+        if [[ "${{ matrix.os }}" == "macos-latest" ]]; then
+          echo "math-lang-bin=math-lang-macos-arm64" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Checkout Rust version
+      run: rustup --version
+
+    - name: Build
+      run: cargo build --profile ${{ matrix.build_type }} --verbose
+
+    - name: Test
+      run: cargo test --verbose
+    
+    - name: Rename binary
+      working-directory: 
+      shell: bash
+      run: |
+        ls -lh
+        mv target/${{ matrix.build_type }}/math-lang target/${{ matrix.build_type }}/${{ steps.strings.outputs.math-lang-bin }}
+        ls -lh
+    
+    - name: Draft release binary
+      uses: softprops/action-gh-release@v2
+      with:
+        files: |
+          target/${{ matrix.build_type }}/${{ steps.strings.outputs.math-lang-bin }}
