@@ -634,4 +634,16 @@ mod test {
             .collect::<Vec<String>>();
         assert_eq!(output, &correct);
     }
+
+    #[test]
+    fn fib() {
+        let source = examples::fib();
+        let mut runtime = Runtime::new();
+        let output = runtime.execute(&source).unwrap();
+        let correct = vec!["1", "1", "2", "3", "5", "55"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect::<Vec<String>>();
+        assert_eq!(output, &correct);
+    }
 }
