@@ -1,0 +1,36 @@
+# This starter workflow is for a CMake project running on multiple platforms. There is a different starter workflow if you just want a single platform.
+# See: https://github.com/actions/starter-workflows/blob/main/ci/cmake-single-platform.yml
+name: Build from source and run tests on multiple platform
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      # Set fail-fast to false to ensure that feedback is delivered for all matrix combinations. Consider changing this to true when your workflow is stable.
+      fail-fast: false
+
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        build_type: [release]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Checkout Rust version
+      run: rustup --version
+
+    - name: Build
+      run: cargo build --profile ${{ matrix.build_type }} --verbose
+
+    - name: Test
+      run: cargo test --verbose

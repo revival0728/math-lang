@@ -1,0 +1,24 @@
+[package]
+name = "math-lang"
+version = "0.2.0"
+edition = "2024"
+authors = ["revival0728"]
+description = "toy scripting language to calculate math"
+homepage = "https://github.com/revival0728/math-lang"
+build = "build.rs"
+readme = "README.md"
+
+[profile.release]
+opt-level = 2
+
+[dependencies]
+lexgen = "0.16.0"
+lexgen_util = "0.16.0"
+clap = { version = "4.6.1", features = ["derive"] }
+
+[dev-dependencies]
+pretty_assertions = "1.4.1"
+
+[build-dependencies]
+vergen = { version = "10", features = ["build", "cargo", "rustc"] }
+anyhow = "1.0.102"
