@@ -64,6 +64,7 @@ def-fun = ([fun-name]([[] | [var] | [var], ...]) = [expr])
 ### Breaking Changes
 - no more `a^b` rnum, use operator `^` instead
 - `=` is now operator
+- `mod` is now operator
 - accept no argument function
 
 You can checkout MLS script exmaples in the [`examples/`](/examples/) folder.
@@ -108,8 +109,8 @@ which is in [-1.7976931348623157e+308, 1.7976931348623157e+308]
 
 | name | value |
 |------|----------|
-| pi   | 3.14159265358979323846264338327950288 |
-| e    | 2.71828182845904523536028747135266250 |
+| pi   | 3.14159265358979323846264338327950288 (std::f64::consts::PI) |
+| e    | 2.71828182845904523536028747135266250 (std::f64::consts::E)|
 
 ### Functions
 
