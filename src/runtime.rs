@@ -174,10 +174,10 @@ impl<'input> Runtime<'input> {
                 let fun = {
                     let mut gfn = None;
                     for scope in self.locals.iter().rev() {
-                        let Some(efn) = scope.get_fun(name) else {
+                        if let Some(efn) = scope.get_fun(name) {
+                            gfn = Some(efn);
                             break;
-                        };
-                        gfn = Some(efn);
+                        }
                     }
                     if gfn.is_none() {
                         gfn = self.builtin.get_fun(name);

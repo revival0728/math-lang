@@ -8,6 +8,9 @@ homepage = "https://github.com/revival0728/math-lang"
 build = "build.rs"
 readme = "README.md"
 
+[profile.release]
+opt-level = 2
+
 [dependencies]
 lexgen = "0.16.0"
 lexgen_util = "0.16.0"

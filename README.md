@@ -155,3 +155,4 @@ it is possible to read or get ENV by function `__[ENV_name]__()`, where `[ENV_na
 ## TODO
 - [ ] implement BigNum, fix i64 and f64 overflow problem
 - [ ] improve error message
+- [ ] make recursive possible

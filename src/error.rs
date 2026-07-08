@@ -6,7 +6,7 @@ pub trait Error {
 
     fn col_to_string(&self) -> String {
         if let Some(col) = self.col() {
-            format!(":{}: ", col)
+            format!(":{}: ", col + 1)
         } else {
             format!(": ")
         }
@@ -15,7 +15,7 @@ pub trait Error {
         format!(
             "{} at line:{}{}{}",
             self.err_type(),
-            self.line(),
+            self.line() + 1,
             self.col_to_string(),
             self.msg()
         )

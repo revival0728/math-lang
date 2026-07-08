@@ -1,0 +1,8 @@
+a = 1
+b = 2
+c = 3
+
+f(x) = a*x^2 + b*x + c
+g(x) = f(x)^3 * sin(f(x) * f(x)) mod 17
+
+g(10)

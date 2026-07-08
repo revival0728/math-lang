@@ -43,7 +43,7 @@ pub struct Compiler<'input> {
     ast: Vec<Inst<'input>>,
     oper_tk: Vec<(lexgen_util::Loc, Token<'input>)>,
     idnt_tk: Vec<(lexgen_util::Loc, Expr<'input>)>,
-    fun_call: Vec<Vec<(lexgen_util::Loc, Token<'input>)>>,
+    fun_call: Vec<Vec<Vec<(lexgen_util::Loc, Token<'input>)>>>,
     expr_buf: Vec<(lexgen_util::Loc, Vec<(lexgen_util::Loc, Token<'input>)>)>,
 }
 
@@ -323,7 +323,12 @@ impl<'input> Compiler<'input> {
             } else if self.state.in_funcall > 0 {
                 macro_rules! push_token {
                     ($token:expr) => {{
-                        self.fun_call.last_mut().unwrap().push((lloc, $token));
+                        self.fun_call
+                            .last_mut()
+                            .unwrap()
+                            .last_mut()
+                            .unwrap()
+                            .push((lloc, $token));
                     }};
                 }
                 match token {
@@ -370,8 +375,8 @@ impl<'input> Compiler<'input> {
                     }
                     Token::FunCall(name) => {
                         self.state.in_funcall += 1;
-                        self.fun_call.push(vec![(lloc, Token::Var(name))]);
-                        self.fun_call.push(vec![]);
+                        self.fun_call
+                            .push(vec![vec![(lloc, Token::Var(name))], vec![]]);
                     }
                     Token::Comma => {
                         return Err(CompilerError::new_with_literal(
@@ -417,19 +422,20 @@ impl<'input> Compiler<'input> {
     }
     fn parse_funcall(&mut self) -> Result<Expr<'input>, CompilerError> {
         let mut args = Vec::new();
-        if !self.fun_call.last().unwrap().is_empty() {
-            for _ in 1..self.fun_call.len() {
-                let tokens = self.fun_call.pop().unwrap();
-                self.expr_buf.push((self.fun_call[0][0].0, tokens));
+        let mut cur_fun_call = self.fun_call.pop().unwrap();
+        if !cur_fun_call.last().unwrap().is_empty() {
+            for _ in 1..cur_fun_call.len() {
+                let tokens = cur_fun_call.pop().unwrap();
+                self.expr_buf.push((cur_fun_call[0][0].0, tokens));
                 let expr = self.parse_expr()?;
                 args.push(expr);
             }
             args.reverse();
         } else {
-            self.fun_call.pop();
+            cur_fun_call.pop();
         }
 
-        let mut fn_name = self.fun_call.pop().unwrap();
+        let mut fn_name = cur_fun_call.pop().unwrap();
         if let Token::Var(name) = fn_name.pop().unwrap().1 {
             Ok(Expr::FunCall(name, args))
         } else {
