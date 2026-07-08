@@ -47,13 +47,16 @@ Options:
 ## Language Syntax
 ```
 rnum = [raw-number] | [scientific-notation]
-idnt = [user-defined-variable] | [builtin-constants] | [rnum]
+vars = [user-defined-variable] | [builtin-constants]
+idnt = [vars] | [rnum]
 b_op = [+][-][*][/][^][=][mod]
 s_op = [-]
 expr = [idnt] |
        [fun-call] |
        ([expr]) |
        [s_op][expr] |
+       [rnum][[expr]/[rnum]]
+       [vars][[expr]/[rnum]]
        [expr][b_op][expr] |
 fun-call = [fun-name]([[] | [expr] | [expr], ...])
 ```
@@ -64,19 +67,25 @@ fun-call = [fun-name]([[] | [expr] | [expr], ...])
 
 You can checkout MLS script exmaples in the [`examples/`](/examples/) folder.
 
+## About Variable Name
+the variable name must matches regex `([_]|[A-Z]|[a-z])([_]|[A-Z]|[a-z]|[0-9])*` which `n`, `_n`, `n1`, `_n1`, `N`, ... are all valid
+
+### NOTICE
+you should never use variable name with format `__[name]__`, it is used by ENV and compiler
+
 ## About Operator
-
 ### Precedence
-
 ```
 (s_op)(-) > (^) > (/) = (*) > (b_op)(-) = (+) > (mod) > (=)
 ```
 
 ### Notice
 - `mod`: calculates euclid remainder, which is `r` and `0 <= r < abs(rhs)`
+- `*`: auto insertion bewteen
+  1. number and variable
+  2. variable and variable
 
 ## Type System
-
 types are automatically determined, depends on precision and size of value
 
 ```
@@ -86,7 +95,6 @@ BigNum > f64 > i64 > i32
 where `f64`, `i64`, `i32` are Rust primitve types, `BigNum` is used only when precision or size of value is required
 
 ### Value Limit
-
 currently values are limited by Rust primitive type `f64`, will change after implementing `BigNum`
 
 which is in [-1.7976931348623157e+308, 1.7976931348623157e+308]
@@ -131,8 +139,17 @@ which is in [-1.7976931348623157e+308, 1.7976931348623157e+308]
 - remove `pow(a, b)`, use `a^b` instead
 - rename `lg(x)` to `log2(x)`
 
+## About Environment Variable (ENV)
+it is possible to read or get ENV by function `__[ENV_name]__()`, where `[ENV_name]` only contains lower case alphabets
+
+- the function always returns current ENV value
+- function with argument sets current ENV to the argument value
+
+| ENV  | document |
+|------|----------|
+| PRECISION | the precision of float output |
+
+
 ## TODO
-- [ ] implement BigNum
+- [ ] implement BigNum, fix i64 and f64 overflow problem
 - [ ] improve error message
-- [ ] fix i64 and f64 overflow problem
-- [ ] add custom precision output

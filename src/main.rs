@@ -1,5 +1,6 @@
 mod cli;
 mod comiler;
+mod env;
 mod error;
 mod lexer;
 mod runtime;

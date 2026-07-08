@@ -1,4 +1,5 @@
 use crate::comiler::{Compiler, Expr, Inst};
+use crate::env::*;
 use crate::error::{GlobalError, RuntimeError};
 use crate::var::{Var, VarType};
 use std::cell::RefCell;
@@ -97,6 +98,7 @@ impl<'input> Runtime<'input> {
                 )
             };
         }
+        // math functions
         add_builtin_fn! { sin(x) };
         add_builtin_fn! { cos(x) };
         add_builtin_fn! { tan(x) };
@@ -114,9 +116,11 @@ impl<'input> Runtime<'input> {
         add_builtin_fn! { ln(x) };
         add_builtin_fn! { trunc(x) };
         add_builtin_fn! { cbrt(x) };
+        // env functions
+        add_builtin_fn! { __precision__(x) }
 
         // add global scope
-        let mut global = Scope::default();
+        let global = Scope::default();
         runtime.locals.push(global);
 
         runtime
@@ -188,7 +192,7 @@ impl<'input> Runtime<'input> {
                     }
                 }
                 .clone();
-                if fun.borrow().para_name.len() != args.len() {
+                if !is_env(name) && fun.borrow().para_name.len() != args.len() {
                     return Err(RuntimeError {
                         line,
                         msg: format!(
@@ -364,6 +368,53 @@ impl<'input> Runtime<'input> {
                         }
                     }};
                 }
+                macro_rules! handle_integer_env_func {
+                    ($env_var:ident, $limit:literal) => {{
+                        let scope = self.locals.last_mut().expect("runtime internal error!");
+                        if let Some(x) = scope.get_var("x") {
+                            if x.borrow().type_ >= VarType::F64 {
+                                return Err(RuntimeError {
+                                    line,
+                                    msg: format!(
+                                        "cannot config {} with float number",
+                                        stringify!($env_var)
+                                    ),
+                                });
+                            }
+                            // NOTE: will break on 128 bit target?
+                            let value: i32 = (&*x.borrow()).into();
+                            let value: u32 = match value.try_into() {
+                                Ok(v) => v,
+                                Err(_) => {
+                                    return Err(RuntimeError {
+                                        line,
+                                        msg: format!(
+                                            "cannot config {} with negative number",
+                                            stringify!($env_var)
+                                        ),
+                                    });
+                                }
+                            };
+                            if value > $limit {
+                                return Err(RuntimeError {
+                                    line,
+                                    msg: format!(
+                                        "env({}) must less than {}",
+                                        stringify!($env_var),
+                                        $limit
+                                    ),
+                                });
+                            }
+                            unsafe {
+                                $env_var = value;
+                                Ok(Rc::new(RefCell::new(Var::from($env_var as i64))))
+                            }
+                        } else {
+                            // NOTE: will break on 128 bit target?
+                            unsafe { Ok(Rc::new(RefCell::new(Var::from($env_var as i64)))) }
+                        }
+                    }};
+                }
                 match name {
                     &"sin" => handle_arg_1!(sin),
                     &"cos" => handle_arg_1!(cos),
@@ -382,6 +433,7 @@ impl<'input> Runtime<'input> {
                     &"ln" => handle_arg_1!(log, E),
                     &"trunc" => handle_arg_1!(trunc),
                     &"cbrt" => handle_arg_1!(cbrt),
+                    &"__precision__" => handle_integer_env_func!(PRECISION, 15),
                     _ => panic!("runtime internal error!"),
                 }
             }

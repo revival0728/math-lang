@@ -186,7 +186,7 @@ impl<'input> Compiler<'input> {
                     if to_add_mul {
                         return Err(CompilerError::new_with_literal(
                             &lloc,
-                            "consecutive number literals are not acceptable",
+                            "consecutive number literals or numbers behind variable are not acceptable",
                         ));
                     } else {
                         to_add_mul = true;
@@ -417,13 +417,17 @@ impl<'input> Compiler<'input> {
     }
     fn parse_funcall(&mut self) -> Result<Expr<'input>, CompilerError> {
         let mut args = Vec::new();
-        for _ in 1..self.fun_call.len() {
-            let tokens = self.fun_call.pop().unwrap();
-            self.expr_buf.push((self.fun_call[0][0].0, tokens));
-            let expr = self.parse_expr()?;
-            args.push(expr);
+        if !self.fun_call.last().unwrap().is_empty() {
+            for _ in 1..self.fun_call.len() {
+                let tokens = self.fun_call.pop().unwrap();
+                self.expr_buf.push((self.fun_call[0][0].0, tokens));
+                let expr = self.parse_expr()?;
+                args.push(expr);
+            }
+            args.reverse();
+        } else {
+            self.fun_call.pop();
         }
-        args.reverse();
 
         let mut fn_name = self.fun_call.pop().unwrap();
         if let Token::Var(name) = fn_name.pop().unwrap().1 {

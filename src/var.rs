@@ -1,3 +1,4 @@
+use crate::env::PRECISION;
 use std::convert::{From, Into};
 use std::fmt::Display;
 use std::ops::{Add, Div, Mul, Neg, Rem, Sub};
@@ -183,7 +184,11 @@ impl Display for Var {
             }
             VarType::F64 => {
                 let v: f64 = self.into();
-                write!(f, "{:.07}", v)
+                // SAFE: no multiple threads
+                unsafe {
+                    let p = PRECISION as usize;
+                    write!(f, "{:.p$}", v)
+                }
             }
         }
     }

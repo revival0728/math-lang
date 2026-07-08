@@ -45,9 +45,8 @@ impl<'cli> CLI<'cli> {
     }
     fn exec_source(&mut self, source: String, loc_info: bool) {
         let source = Box::leak(source.into_boxed_str());
-        unsafe {
-            self.input.push(Box::from_raw(source));
-        }
+        // SAFE: The Box<> will not free before Runtime<>
+        unsafe { self.input.push(Box::from_raw(source)) };
         match self.runtime.execute(source) {
             Ok(output) => {
                 if let Some(out) = output.last() {
