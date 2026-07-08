@@ -61,11 +61,6 @@ expr = [idnt] |
 fun-call = [fun-name]([[] | [expr] | [expr], ...])
 def-fun = ([fun-name]([[] | [var] | [var], ...]) = [expr])
 ```
-### Breaking Changes
-- no more `a^b` rnum, use operator `^` instead
-- `=` is now operator
-- `mod` is now operator
-- accept no argument function
 
 You can checkout MLS script exmaples in the [`examples/`](/examples/) folder.
 
@@ -112,7 +107,14 @@ which is in [-1.7976931348623157e+308, 1.7976931348623157e+308]
 | pi   | 3.14159265358979323846264338327950288 (std::f64::consts::PI) |
 | e    | 2.71828182845904523536028747135266250 (std::f64::consts::E)|
 
-### Functions
+### Logic Functions
+
+| name | document |
+|------|----------|
+| if(x) | return `x == 0`  where `x` must be an integer |
+| else(x) | return `x != 0` where `x` must be an integer |
+
+### Math Functions
 
 | name | document |
 |------|----------|
@@ -136,24 +138,31 @@ which is in [-1.7976931348623157e+308, 1.7976931348623157e+308]
 
 - using `f64::builtin(x)` for all Rust primitive types
 
-### Breaking Changes
-- remove `mod(a, b)`, use `a mod b` instead
-- remove `pow(a, b)`, use `a^b` instead
-- rename `lg(x)` to `log2(x)`
-
 ## About Environment Variable (ENV)
 it is possible to read or get ENV by function `__[ENV_name]__()`, where `[ENV_name]` only contains lower case alphabets
 
 - the function always returns current ENV value
 - function with argument sets current ENV to the argument value
 
-| ENV  | document | constraint |
-|------|----------| ---------- |
-| PRECISION | the precision of float output | [0, 15] |
-| DETAIL_DEPTH | the output level of detail information | [0, 1] |
+| ENV  | document | default | constraint |
+|------|----------| --------| ---------- |
+| PRECISION | the precision of float output | 7 | [0, 15] |
+| DETAIL_DEPTH | the output level of detail information | repl=0, source=1 |[0, 1] |
+| MAX_STACK_DEPTH | the maximum stack depth of recrusive function | 512 |[0, inf] |
 
+- maximum stack size is not ENV, but can be configured by execution argument, by default is 64MB
 
-## TODO
+## Development
+### Main Changes
+- support expression multiplication
+- support recursive function
+- added env MAX_STACK_DEPTH
+
+### Fixed Bugs
+- negative sign cannot use after left paren
+- source file only output last result
+- execution argument did not pass to runtime
+
+### TODO
 - [ ] implement BigNum, fix i64 and f64 overflow problem
 - [ ] improve error message
-- [ ] make recursive possible

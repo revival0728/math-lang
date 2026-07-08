@@ -1,4 +1,4 @@
-use crate::env;
+use crate::env::*;
 use crate::runtime::Runtime;
 use clap::Parser;
 use std::io;
@@ -9,7 +9,7 @@ use std::path::PathBuf;
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
-struct ExArgs {
+pub struct ExArgs {
     /// Path of source file
     source: Option<PathBuf>,
 
@@ -20,6 +20,14 @@ struct ExArgs {
     /// ENV DETAIL_DEPTH
     #[arg(long, value_name = "VALUE")]
     env_detail_depth: Option<u32>,
+
+    /// ENV MAX_STACK_DEPTH
+    #[arg(long, value_name = "VALUE")]
+    env_max_stack_depth: Option<u32>,
+
+    /// Maximum stack size
+    #[arg(long, value_name = "BYTES")]
+    pub max_stack_size: Option<usize>,
 }
 
 pub struct CLI<'cli> {
@@ -27,7 +35,6 @@ pub struct CLI<'cli> {
     line_prefix: String,
     input: Vec<Box<str>>,
     runtime: Runtime<'cli>,
-    args: ExArgs,
 }
 
 impl<'cli> CLI<'cli> {
@@ -42,40 +49,52 @@ impl<'cli> CLI<'cli> {
         let line_prefix = format!(">> ");
         let input = Vec::new();
         let runtime = Runtime::new();
-        let args = ExArgs::parse();
 
         Self {
             info,
             line_prefix,
             input,
             runtime,
-            args,
         }
     }
-    fn exec_source(&mut self, source: String, loc_info: bool) {
+    fn exec_source(&mut self, source: String, repl: bool) {
         let source = Box::leak(source.into_boxed_str());
         // SAFE: The Box<> will not free before Runtime<>
         unsafe { self.input.push(Box::from_raw(source)) };
         match self.runtime.execute(source) {
             Ok(output) => {
-                if let Some(out) = output.last() {
-                    println!("{}", out);
+                if repl {
+                    if let Some(out) = output.last() {
+                        println!("{}", out);
+                    }
+                } else {
+                    for out in output {
+                        println!("{}", out);
+                    }
                 }
             }
             Err(err) => {
                 println!(
                     "{}",
-                    if loc_info {
-                        err.all_info()
-                    } else {
+                    if repl {
                         err.no_loc_info()
+                    } else {
+                        err.all_info()
                     }
                 );
             }
         };
     }
-    pub fn run(&mut self) {
-        if let Some(source) = self.args.source.clone() {
+    fn set_env(&mut self, args: &ExArgs) {
+        unsafe {
+            PRECISION = args.env_precision.unwrap_or(PRECISION);
+            DETAIL_DEPTH = args.env_detail_depth.unwrap_or(DETAIL_DEPTH);
+            MAX_STACK_DEPTH = args.env_max_stack_depth.unwrap_or(MAX_STACK_DEPTH);
+        }
+    }
+    pub fn run(&mut self, args: ExArgs) {
+        if let Some(source) = args.source.clone() {
+            self.set_env(&args);
             let source = match std::fs::read_to_string(source) {
                 Ok(s) => s,
                 Err(e) => {
@@ -83,12 +102,13 @@ impl<'cli> CLI<'cli> {
                     return;
                 }
             };
-            self.exec_source(source, true);
+            self.exec_source(source, false);
             return;
         }
 
         println!("{}", self.info);
-        unsafe { env::DETAIL_DEPTH = 1 };
+        self.set_env(&args);
+        unsafe { DETAIL_DEPTH = 1 };
         loop {
             print!("{}", self.line_prefix);
             match io::stdout().flush() {
@@ -106,7 +126,7 @@ impl<'cli> CLI<'cli> {
             if input.trim() == "quit" || input.trim() == "exit" {
                 break;
             }
-            self.exec_source(input, false);
+            self.exec_source(input, true);
         }
     }
 }

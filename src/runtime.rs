@@ -27,6 +27,7 @@ pub struct Runtime<'input> {
     builtin: Scope<'input>,
     locals: Vec<Scope<'input>>,
     output: Vec<String>,
+    stack_depth: u32,
 }
 
 impl<'input> Scope<'input> {
@@ -119,6 +120,10 @@ impl<'input> Runtime<'input> {
         // env functions
         add_builtin_fn! { __precision__(x) }
         add_builtin_fn! { __detail_depth__(x) }
+        add_builtin_fn! { __max_stack_depth__(x) }
+        // logic functions
+        add_builtin_fn! { if(x) }
+        add_builtin_fn! { else(x) }
 
         // add global scope
         let global = Scope::default();
@@ -132,14 +137,11 @@ impl<'input> Runtime<'input> {
             Ok(ast) => ast,
             Err(ce) => return Err(GlobalError::CE(ce)),
         };
-        let mut output = None;
         for (idx, inst) in ast.iter().enumerate() {
-            output = match self.exec_inst(inst, idx) {
-                Ok(val) => Some(val),
+            let output = match self.exec_inst(inst, idx) {
+                Ok(val) => val,
                 Err(ce) => return Err(GlobalError::RE(ce)),
             };
-        }
-        if let Some(output) = output {
             let out_str = output.borrow().to_string();
             if !out_str.is_empty() {
                 self.output.push(out_str);
@@ -150,13 +152,23 @@ impl<'input> Runtime<'input> {
     fn exec_fun(
         &mut self,
         fun: &Fun<'input>,
-        line: Option<usize>,
+        line: usize,
     ) -> Result<Rc<RefCell<Var>>, RuntimeError> {
-        let mut ret = None;
-        for (idx, inst) in fun.data.iter().enumerate() {
-            let ln = if let Some(ln) = line { ln } else { idx };
-            ret = Some(self.exec_inst(inst, ln)?);
+        self.stack_depth += 1;
+        unsafe {
+            if self.stack_depth >= MAX_STACK_DEPTH {
+                let max_stack_depth = MAX_STACK_DEPTH;
+                return Err(RuntimeError {
+                    line,
+                    msg: format!("reached maximum stack depth {}", max_stack_depth),
+                });
+            }
         }
+        let mut ret = None;
+        for inst in fun.data.iter() {
+            ret = Some(self.exec_inst(inst, line)?);
+        }
+        self.stack_depth -= 1;
         match ret {
             Some(val) => Ok(val),
             None => panic!("runtime internal error!"),
@@ -213,7 +225,7 @@ impl<'input> Runtime<'input> {
                     sub_local.add_var(pname, Var::clone(&value.borrow()));
                 }
                 self.locals.push(sub_local);
-                let rval = self.exec_fun(&fun.borrow(), Some(line))?;
+                let rval = self.exec_fun(&fun.borrow(), line)?;
                 self.locals.pop();
                 Ok(rval)
             }
@@ -274,9 +286,21 @@ impl<'input> Runtime<'input> {
             Inst::Expr(expr) => self.exec_expr(expr, line),
             Inst::Add(lhs, rhs) => handle_binary!(lhs + rhs),
             Inst::Sub(lhs, rhs) => handle_binary!(lhs - rhs),
-            Inst::Mul(lhs, rhs) => handle_binary!(lhs * rhs),
             Inst::Div(lhs, rhs) => handle_binary!(lhs / rhs),
             Inst::Mod(lhs, rhs) => handle_binary!(lhs % rhs),
+            Inst::Mul(lhs, rhs) => {
+                let lhs = self.exec_expr(lhs, line)?;
+                // check lhs is zero for logic function
+                if lhs.borrow().type_ <= VarType::I64 {
+                    let lvalue: i64 = (&*lhs.borrow()).into();
+                    if lvalue == 0 {
+                        return Ok(Rc::new(RefCell::new(Var::from(0))));
+                    }
+                }
+                let rhs = self.exec_expr(rhs, line)?;
+                let eval = Rc::new(RefCell::new(&*lhs.borrow() * &*rhs.borrow()));
+                Ok(eval)
+            }
             Inst::Set(lhs, rhs) => match lhs {
                 Expr::None => panic!("compiler internal error (in runtime)"),
                 Expr::Var(name) => {
@@ -398,8 +422,8 @@ impl<'input> Runtime<'input> {
                         }
                     }};
                 }
-                macro_rules! handle_integer_env_func {
-                    ($env_var:ident, $limit:literal) => {{
+                macro_rules! handle_integer_env_fun {
+                    ($env_var:ident, $limit:expr) => {{
                         let scope = self.locals.last_mut().expect("runtime internal error!");
                         if let Some(x) = scope.get_var("x") {
                             if x.borrow().type_ >= VarType::F64 {
@@ -445,6 +469,23 @@ impl<'input> Runtime<'input> {
                         }
                     }};
                 }
+                macro_rules! handle_logic_fun {
+                    (x $logic_oper:tt $stand:literal) => {{
+                        let scope = self.locals.last_mut().expect("runtime internal error!");
+                        let Some(x) = scope.get_var("x") else {
+                            panic!("runtime internal error!")
+                        };
+                        if x.borrow().type_ > VarType::I64 {
+                            return Err(RuntimeError {
+                                line,
+                                msg: format!("logic functions only accepts integer as argument"),
+                            });
+                        }
+                        let x: i64 = (&*x.borrow()).into();
+                        let result = (x $logic_oper $stand) as i32;
+                        Ok(Rc::new(RefCell::new(Var::from(result))))
+                    }};
+                }
                 match name {
                     &"sin" => handle_arg_1!(sin),
                     &"cos" => handle_arg_1!(cos),
@@ -463,8 +504,11 @@ impl<'input> Runtime<'input> {
                     &"ln" => handle_arg_1!(log, E),
                     &"trunc" => handle_arg_1!(trunc),
                     &"cbrt" => handle_arg_1!(cbrt),
-                    &"__precision__" => handle_integer_env_func!(PRECISION, 15),
-                    &"__detail_depth__" => handle_integer_env_func!(DETAIL_DEPTH, 1),
+                    &"__precision__" => handle_integer_env_fun!(PRECISION, 15),
+                    &"__detail_depth__" => handle_integer_env_fun!(DETAIL_DEPTH, 1),
+                    &"__max_stack_depth__" => handle_integer_env_fun!(MAX_STACK_DEPTH, u32::MAX),
+                    &"if" => handle_logic_fun!(x == 0),
+                    &"else" => handle_logic_fun!(x != 0),
                     _ => panic!("runtime internal error!"),
                 }
             }

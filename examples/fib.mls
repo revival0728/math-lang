@@ -1,12 +1,8 @@
-a = 1
-b = 2
-c = 3
-
-f(x) = a*x^2 + b*x + c
-g(x) = f(x)^3 * sin(f(x) * f(x)) mod 17
-
-g(10)
-
 fib(x) = ( if(x - 1)(1) + if(x - 2)(1) + if(if(x + 1) + if(x) + if(x - 1) + if(x - 2))(fib(x - 1) + fib(x - 2)) )
 
+fib(1)
+fib(2)
+fib(3)
+fib(4)
+fib(5)
 fib(10)

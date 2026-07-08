@@ -205,8 +205,13 @@ impl<'input> Compiler<'input> {
                         to_add_mul = true;
                     }
                 }
-                Token::LParen => {
+                Token::RParen => {
+                    to_add_mul = true;
+                    to_make_func = false;
                     to_neg_sign = false;
+                }
+                Token::LParen => {
+                    to_neg_sign = true;
                     if to_make_func {
                         to_make_func = false;
                         let (loc, var_tk) = self.expr_buf.last_mut().unwrap().1.pop().unwrap();
