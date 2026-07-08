@@ -147,6 +147,7 @@ it is possible to read or get ENV by function `__[ENV_name]__()`, where `[ENV_na
 | ENV  | document | default | constraint |
 |------|----------| --------| ---------- |
 | PRECISION | the precision of float output | 7 | [0, 15] |
+| PRINT_SET_INST | to print `set` intruction result or not | repl=1, source=0 | [0, 1] |
 | DETAIL_DEPTH | the output level of detail information | repl=0, source=1 |[0, 1] |
 | MAX_STACK_DEPTH | the maximum stack depth of recrusive function | 512 |[0, inf] |
 
@@ -157,6 +158,8 @@ it is possible to read or get ENV by function `__[ENV_name]__()`, where `[ENV_na
 - support expression multiplication
 - support recursive function
 - added env MAX_STACK_DEPTH
+- support multiple outputs of source exection
+- added env PRINT_SET_INST
 
 ### Fixed Bugs
 - negative sign cannot use after left paren

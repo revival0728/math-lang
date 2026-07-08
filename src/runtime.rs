@@ -121,6 +121,7 @@ impl<'input> Runtime<'input> {
         add_builtin_fn! { __precision__(x) }
         add_builtin_fn! { __detail_depth__(x) }
         add_builtin_fn! { __max_stack_depth__(x) }
+        add_builtin_fn! { __print_set_inst__(x) }
         // logic functions
         add_builtin_fn! { if(x) }
         add_builtin_fn! { else(x) }
@@ -138,12 +139,17 @@ impl<'input> Runtime<'input> {
             Err(ce) => return Err(GlobalError::CE(ce)),
         };
         for (idx, inst) in ast.iter().enumerate() {
+            let to_print = if let &Inst::Set(_, _) = inst {
+                unsafe { PRINT_SET_INST == 1 }
+            } else {
+                true
+            };
             let output = match self.exec_inst(inst, idx) {
                 Ok(val) => val,
                 Err(ce) => return Err(GlobalError::RE(ce)),
             };
             let out_str = output.borrow().to_string();
-            if !out_str.is_empty() {
+            if to_print && !out_str.is_empty() {
                 self.output.push(out_str);
             }
         }
@@ -507,6 +513,7 @@ impl<'input> Runtime<'input> {
                     &"__precision__" => handle_integer_env_fun!(PRECISION, 15),
                     &"__detail_depth__" => handle_integer_env_fun!(DETAIL_DEPTH, 1),
                     &"__max_stack_depth__" => handle_integer_env_fun!(MAX_STACK_DEPTH, u32::MAX),
+                    &"__print_set_inst__" => handle_integer_env_fun!(PRINT_SET_INST, 1),
                     &"if" => handle_logic_fun!(x == 0),
                     &"else" => handle_logic_fun!(x != 0),
                     _ => panic!("runtime internal error!"),
@@ -519,7 +526,10 @@ impl<'input> Runtime<'input> {
 #[cfg(test)]
 mod test {
     use super::Runtime;
-    use crate::test::{examples, simple_expr};
+    use crate::{
+        env::PRINT_SET_INST,
+        test::{examples, simple_expr},
+    };
 
     #[test]
     fn inst_mod_1() {
@@ -606,7 +616,7 @@ mod test {
         let source = examples::basic();
         let mut runtime = Runtime::new();
         let output = runtime.execute(&source).unwrap();
-        let correct = vec!["1235"]
+        let correct = vec!["57", "1235", "1235"]
             .iter()
             .map(|s| s.to_string())
             .collect::<Vec<String>>();
@@ -618,7 +628,7 @@ mod test {
         let source = examples::cosine_law();
         let mut runtime = Runtime::new();
         let output = runtime.execute(&source).unwrap();
-        let correct = vec!["60.0000000"]
+        let correct = vec!["7", "7", "7", "0.5000000", "60.0000000", "60.0000000"]
             .iter()
             .map(|s| s.to_string())
             .collect::<Vec<String>>();
