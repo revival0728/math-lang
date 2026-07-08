@@ -1,3 +1,4 @@
+use crate::env;
 use crate::runtime::Runtime;
 use clap::Parser;
 use std::io;
@@ -11,6 +12,14 @@ use std::path::PathBuf;
 struct ExArgs {
     /// Path of source file
     source: Option<PathBuf>,
+
+    /// ENV PRECISION
+    #[arg(long, value_name = "VALUE")]
+    env_precision: Option<u32>,
+
+    /// ENV DETAIL_DEPTH
+    #[arg(long, value_name = "VALUE")]
+    env_detail_depth: Option<u32>,
 }
 
 pub struct CLI<'cli> {
@@ -79,6 +88,7 @@ impl<'cli> CLI<'cli> {
         }
 
         println!("{}", self.info);
+        unsafe { env::DETAIL_DEPTH = 1 };
         loop {
             print!("{}", self.line_prefix);
             match io::stdout().flush() {

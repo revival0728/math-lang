@@ -59,6 +59,7 @@ expr = [idnt] |
        [vars][[expr]/[rnum]]
        [expr][b_op][expr] |
 fun-call = [fun-name]([[] | [expr] | [expr], ...])
+def-fun = ([fun-name]([[] | [var] | [var], ...]) = [expr])
 ```
 ### Breaking Changes
 - no more `a^b` rnum, use operator `^` instead
@@ -67,8 +68,8 @@ fun-call = [fun-name]([[] | [expr] | [expr], ...])
 
 You can checkout MLS script exmaples in the [`examples/`](/examples/) folder.
 
-## About Variable Name
-the variable name must matches regex `([_]|[A-Z]|[a-z])([_]|[A-Z]|[a-z]|[0-9])*` which `n`, `_n`, `n1`, `_n1`, `N`, ... are all valid
+## About Variable and Function Name
+the variable or function name must matches regex `([_]|[A-Z]|[a-z])([_]|[A-Z]|[a-z]|[0-9])*` which `n`, `_n`, `n1`, `_n1`, `N`, ... are all valid
 
 ### NOTICE
 you should never use variable name with format `__[name]__`, it is used by ENV and compiler
@@ -82,8 +83,8 @@ you should never use variable name with format `__[name]__`, it is used by ENV a
 ### Notice
 - `mod`: calculates euclid remainder, which is `r` and `0 <= r < abs(rhs)`
 - `*`: auto insertion bewteen
-  1. number and variable
-  2. variable and variable
+  - number and variable
+  - variable and variable
 
 ## Type System
 types are automatically determined, depends on precision and size of value
@@ -94,12 +95,12 @@ BigNum > f64 > i64 > i32
 
 where `f64`, `i64`, `i32` are Rust primitve types, `BigNum` is used only when precision or size of value is required
 
+`BigNum` is not implemented yet
+
 ### Value Limit
 currently values are limited by Rust primitive type `f64`, will change after implementing `BigNum`
 
 which is in [-1.7976931348623157e+308, 1.7976931348623157e+308]
-
-`BigNum` is not implemented yet
 
 ## Builtins
 
@@ -145,9 +146,10 @@ it is possible to read or get ENV by function `__[ENV_name]__()`, where `[ENV_na
 - the function always returns current ENV value
 - function with argument sets current ENV to the argument value
 
-| ENV  | document |
-|------|----------|
-| PRECISION | the precision of float output |
+| ENV  | document | constraint |
+|------|----------| ---------- |
+| PRECISION | the precision of float output | [0, 15] |
+| DETAIL_DEPTH | the output level of detail information | [0, 1] |
 
 
 ## TODO

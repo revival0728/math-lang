@@ -118,6 +118,7 @@ impl<'input> Runtime<'input> {
         add_builtin_fn! { cbrt(x) };
         // env functions
         add_builtin_fn! { __precision__(x) }
+        add_builtin_fn! { __detail_depth__(x) }
 
         // add global scope
         let global = Scope::default();
@@ -139,7 +140,10 @@ impl<'input> Runtime<'input> {
             };
         }
         if let Some(output) = output {
-            self.output.push(output.borrow().to_string());
+            let out_str = output.borrow().to_string();
+            if !out_str.is_empty() {
+                self.output.push(out_str);
+            }
         }
         Ok(&self.output)
     }
@@ -302,17 +306,43 @@ impl<'input> Runtime<'input> {
                     line,
                     msg: format!("cannot assign value to numbers"),
                 }),
-                Expr::FunCall(name, _) => {
+                Expr::FunCall(name, param) => {
                     if self.builtin.has_fun(name) {
                         Err(RuntimeError {
                             line,
                             msg: format!("overriding builtin constant {}", name),
                         })
                     } else {
-                        Err(RuntimeError {
-                            line,
-                            msg: format!("custom functions are not supported"),
-                        })
+                        // TODO: add custom functions
+                        let mut para_name = vec![];
+                        for p in param {
+                            match p {
+                                Expr::None => panic!("runtime internal error (in compiler)"),
+                                Expr::Var(pname) => para_name.push(*pname),
+                                _ => {
+                                    return Err(RuntimeError {
+                                        line,
+                                        msg: format!("function paramter only accpets variable"),
+                                    });
+                                }
+                            }
+                        }
+                        // TODO: performance issue here ?
+                        self.locals.last_mut().unwrap().set_fun(
+                            name,
+                            Fun {
+                                para_name,
+                                data: vec![Inst::Expr(rhs.clone())],
+                            },
+                        );
+                        Ok(Rc::new(RefCell::new(Var::from_string(unsafe {
+                            // SAFE: no multiple threads
+                            if DETAIL_DEPTH == 1 {
+                                format!("<defined function {}>", name)
+                            } else {
+                                format!("")
+                            }
+                        }))))
                     }
                 }
             },
@@ -434,6 +464,7 @@ impl<'input> Runtime<'input> {
                     &"trunc" => handle_arg_1!(trunc),
                     &"cbrt" => handle_arg_1!(cbrt),
                     &"__precision__" => handle_integer_env_func!(PRECISION, 15),
+                    &"__detail_depth__" => handle_integer_env_func!(DETAIL_DEPTH, 1),
                     _ => panic!("runtime internal error!"),
                 }
             }

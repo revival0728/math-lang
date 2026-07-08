@@ -25,6 +25,13 @@ impl<'input> Var {
     pub fn none() -> Self {
         Self::default()
     }
+    pub fn from_string(s: String) -> Self {
+        let data = s.into_bytes();
+        Var {
+            type_: VarType::None,
+            data,
+        }
+    }
     pub fn new(value: &'input str) -> Option<Self> {
         macro_rules! try_parse {
             ($rust_type:ident, $var_type:ident, $bytes_of_type:literal) => {
@@ -173,7 +180,15 @@ impl Neg for &Var {
 impl Display for Var {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.type_ {
-            VarType::None | VarType::BigNum => panic!("runtime internal error!"),
+            VarType::BigNum => panic!("runtime internal error!"),
+            VarType::None => {
+                if self.data.is_empty() {
+                    write!(f, "")
+                } else {
+                    let s = str::from_utf8(&self.data).expect("runtime internal error!");
+                    write!(f, "{}", s)
+                }
+            }
             VarType::I32 => {
                 let v: i32 = self.into();
                 write!(f, "{}", v)
