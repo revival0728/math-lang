@@ -260,26 +260,37 @@ impl<'input> Runtime<'input> {
                         ),
                     });
                 }
-                if &self.locals.last().unwrap().name == name {
-                    // Tail Call Optimization
-                    for (pname, expr) in fun.borrow().para_name.iter().zip(args.iter()) {
-                        let value = self.exec_expr(expr, line)?;
-                        self.locals.last_mut().unwrap().add_ref_var(pname, value);
-                    }
-                    let rval = self.exec_fun(&fun.borrow(), line)?;
-                    Ok(rval)
-                } else {
-                    let mut sub_local = Scope::new();
-                    sub_local.name = name;
-                    for (pname, expr) in fun.borrow().para_name.iter().zip(args.iter()) {
-                        let value = self.exec_expr(expr, line)?;
-                        sub_local.add_ref_var(pname, value);
-                    }
-                    self.locals.push(sub_local);
-                    let rval = self.exec_fun(&fun.borrow(), line)?;
-                    self.locals.pop();
-                    Ok(rval)
+
+                let mut sub_local = Scope::new();
+                sub_local.name = name;
+                for (pname, expr) in fun.borrow().para_name.iter().zip(args.iter()) {
+                    let value = self.exec_expr(expr, line)?;
+                    sub_local.add_ref_var(pname, value);
                 }
+                self.locals.push(sub_local);
+                let rval = self.exec_fun(&fun.borrow(), line)?;
+                self.locals.pop();
+                Ok(rval)
+                // if &self.locals.last().unwrap().name == name {
+                //     // Tail Call Optimization
+                //     for (pname, expr) in fun.borrow().para_name.iter().zip(args.iter()) {
+                //         let value = self.exec_expr(expr, line)?;
+                //         self.locals.last_mut().unwrap().add_ref_var(pname, value);
+                //     }
+                //     let rval = self.exec_fun(&fun.borrow(), line)?;
+                //     Ok(rval)
+                // } else {
+                //     let mut sub_local = Scope::new();
+                //     sub_local.name = name;
+                //     for (pname, expr) in fun.borrow().para_name.iter().zip(args.iter()) {
+                //         let value = self.exec_expr(expr, line)?;
+                //         sub_local.add_ref_var(pname, value);
+                //     }
+                //     self.locals.push(sub_local);
+                //     let rval = self.exec_fun(&fun.borrow(), line)?;
+                //     self.locals.pop();
+                //     Ok(rval)
+                // }
             }
             Expr::Number(data) => {
                 if let Some(evar) = self.builtin.get_var(data) {
@@ -362,7 +373,7 @@ impl<'input> Runtime<'input> {
                 if lhs.borrow().type_ <= VarType::I64 {
                     let lvalue: i64 = (&*lhs.borrow()).into();
                     if lvalue == 0 {
-                        return Ok(Rc::new(RefCell::new(Var::from(0))));
+                        return Ok(lhs);
                     }
                 }
                 let rhs = self.exec_expr(rhs, line)?;

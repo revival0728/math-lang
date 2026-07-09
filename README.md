@@ -172,7 +172,6 @@ it is possible to read or get ENV by function `__[ENV_name]__()`, where `[ENV_na
 
 ## Development
 ### Main Changes
-- added tail call optimization to recursion
 - optimized memory usage
 - support formattive style source code [example](/examples/formattive.mls) here
 - added print function
@@ -193,3 +192,4 @@ it is possible to read or get ENV by function `__[ENV_name]__()`, where `[ENV_na
 - [ ] add more logic function
 - [ ] maybe array?
 - [ ] try to optimize memory usage
+- [ ] fix tail call optimization to recursion
