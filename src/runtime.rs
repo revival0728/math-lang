@@ -164,6 +164,7 @@ impl<'input> Runtime<'input> {
         unsafe {
             if self.stack_depth >= MAX_STACK_DEPTH {
                 let max_stack_depth = MAX_STACK_DEPTH;
+                self.stack_depth = 0;
                 return Err(RuntimeError {
                     line,
                     msg: format!("reached maximum stack depth {}", max_stack_depth),
@@ -212,9 +213,12 @@ impl<'input> Runtime<'input> {
                             });
                         }
                     }
-                }
-                .clone();
-                if !is_env(name) && fun.borrow().para_name.len() != args.len() {
+                };
+                let fun_para_len = fun.borrow().para_name.len();
+                let arg_len = args.len();
+                let is_name_env = is_env(name);
+                if is_name_env && arg_len > fun_para_len || !is_name_env && fun_para_len != arg_len
+                {
                     return Err(RuntimeError {
                         line,
                         msg: format!(
@@ -311,6 +315,14 @@ impl<'input> Runtime<'input> {
                 Expr::None => panic!("compiler internal error (in runtime)"),
                 Expr::Var(name) => {
                     let rhs = self.exec_expr(rhs, line)?;
+                    if rhs.borrow().type_ == VarType::None {
+                        return Err(RuntimeError {
+                            line,
+                            msg: format!(
+                                "cannot assign None to a variable, usually caused by assigning function definition expression to a variable"
+                            ),
+                        });
+                    }
                     if self.builtin.has_var(name) {
                         return Err(RuntimeError {
                             line,
@@ -413,12 +425,27 @@ impl<'input> Runtime<'input> {
                 //TODO: add BigNum implemntation
             }
             Inst::BultinFnCall(name) => {
+                macro_rules! check_args {
+                    ($x:ident) => {{
+                        if $x.borrow().type_ == VarType::None {
+                            return Err(RuntimeError {
+                                line,
+                                msg: format!("cannot pass type None to builtin functions, usually caused by function definition"),
+                            });
+                        }
+                    }};
+                    ($arg:ident $(, $args:ident),*) => {{
+                        check_args!($arg);
+                        check_args!($($args),*);
+                    }};
+                }
                 macro_rules! handle_arg_1 {
                     ($rust_fn:ident $(, $default_args:expr),*) => {{
                         let scope = self.locals.last_mut().expect("runtime internal error!");
                         let Some(x) = scope.get_var("x") else {
                             panic!("runtime internal error!")
                         };
+                        check_args!(x);
                         if x.borrow().type_ <= VarType::F64 {
                             let x: f64 = (&*x.borrow()).into();
                             Ok(Rc::new(RefCell::new(Var::from(x.$rust_fn($($default_args),*)))))
@@ -432,6 +459,7 @@ impl<'input> Runtime<'input> {
                     ($env_var:ident, $limit:expr) => {{
                         let scope = self.locals.last_mut().expect("runtime internal error!");
                         if let Some(x) = scope.get_var("x") {
+                            check_args!(x);
                             if x.borrow().type_ >= VarType::F64 {
                                 return Err(RuntimeError {
                                     line,
@@ -481,6 +509,7 @@ impl<'input> Runtime<'input> {
                         let Some(x) = scope.get_var("x") else {
                             panic!("runtime internal error!")
                         };
+                        check_args!(x);
                         if x.borrow().type_ > VarType::I64 {
                             return Err(RuntimeError {
                                 line,
