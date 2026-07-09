@@ -2,6 +2,8 @@
 
 Toy scripting language to calculate math
 
+Everything in this language are math expressions
+
 ## How to Play
 
 1. get the `math-lang` binary
@@ -62,13 +64,14 @@ fun-call = [fun-name]([[] | [expr] | [expr], ...])
 def-fun = ([fun-name]([[] | [var] | [var], ...]) = [expr])
 ```
 
-You can checkout MLS script exmaples in the [`examples/`](/examples/) folder.
+- compiler parses the source line by line
+- you can checkout MLS script exmaples in the [`examples/`](/examples/) folder.
 
 ## About Variable and Function Name
 the variable or function name must matches regex `([_]|[A-Z]|[a-z])([_]|[A-Z]|[a-z]|[0-9])*` which `n`, `_n`, `n1`, `_n1`, `N`, ... are all valid
 
 ### NOTICE
-you should never use variable name with format `__[name]__`, it is used by ENV and compiler
+you should never use variable name with format `__[name]__`, it is used by ENV, compiler and runtime
 
 ## About Operator
 ### Precedence
@@ -99,7 +102,6 @@ currently values are limited by Rust primitive type `f64`, will change after imp
 which is in [-1.7976931348623157e+308, 1.7976931348623157e+308]
 
 ## Builtins
-
 ### Constants
 
 | name | value |
@@ -107,12 +109,27 @@ which is in [-1.7976931348623157e+308, 1.7976931348623157e+308]
 | pi   | 3.14159265358979323846264338327950288 (std::f64::consts::PI) |
 | e    | 2.71828182845904523536028747135266250 (std::f64::consts::E)|
 
+### Special Functions
+
+| name | document |
+|------|----------|
+| $(x) | always return `None`, usually uses as entry point |
+| .(x) | always return `1`, usually to connect expressions |
+
+- special functions allows you to write formattive code
+- the compiler still parses it as single line
+- check out example [here](/examples/formattive.mls)
+
+> In math, it just all ONEs, or should I say only ONE?
+
 ### Logic Functions
 
 | name | document |
 |------|----------|
 | if(x) | return `x == 0`  where `x` must be an integer |
 | else(x) | return `x != 0` where `x` must be an integer |
+
+- it works because runtime will check `lhs == 0`, if true then will not calcuate `rhs`
 
 ### Math Functions
 
@@ -155,17 +172,24 @@ it is possible to read or get ENV by function `__[ENV_name]__()`, where `[ENV_na
 
 ## Development
 ### Main Changes
-- support expression multiplication
-- support recursive function
-- added env MAX_STACK_DEPTH
-- support multiple outputs of source exection
-- added env PRINT_SET_INST
+- optimized memory usage
+- support formattive style source code [example](/examples/formattive.mls) here
+- added print function
+- support comment
 
 ### Fixed Bugs
-- negative sign cannot use after left paren
-- source file only output last result
-- execution argument did not pass to runtime
+- forget to reset stack_depth after error occured
+- panic while assign None (function definition expression) to a variable
+- panic while passing None to builtin functions
+- valid consecutive parens "()()..." but got error
+- panic while passing more than one arguement to the functions
+- ENV function output error while it's valid
+- nested function passes wrong arguments
 
 ### TODO
 - [ ] implement BigNum, fix i64 and f64 overflow problem
 - [ ] improve error message
+- [ ] add more logic function
+- [ ] maybe array?
+- [ ] try to optimize memory usage
+- [ ] fix tail call optimization to recursion

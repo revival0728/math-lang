@@ -24,13 +24,17 @@ pub enum Token<'input> {
 }
 
 #[derive(Debug, Default, Clone)]
-pub struct LexerState {}
+pub struct LexerState {
+    in_comment: bool,
+}
 
 lexer! {
     pub Lexer(LexerState) -> Token<'input>;
 
+    let comment = '#';
     let whitespace = [' ' '\t'];
     let newline = '\n' | "\r\n";
+    let special_fun = "$" | ".";
 
     rule Init {
         $whitespace,
@@ -47,6 +51,11 @@ lexer! {
         "mod" = Token::Mod,
         $newline = Token::Newline,
 
+        $special_fun => |lexer| {
+            let match_ = lexer.match_();
+            lexer.return_(Token::Var(match_))
+        },
+
         let var_init = ['a'-'z' 'A'-'Z' '_'];
         let var_subseq = $var_init | ['0'-'9'];
         $var_init $var_subseq* => |lexer| {
@@ -59,6 +68,19 @@ lexer! {
             let match_ = lexer.match_();
             lexer.return_(Token::Number(match_))
         },
+
+        $comment => |lexer| {
+            lexer.state().in_comment = true;
+            lexer.switch(LexerRule::Comment)
+        },
+    }
+
+    rule Comment {
+        $newline => |lexer| {
+            lexer.state().in_comment = false;
+            lexer.switch_and_return(LexerRule::Init, Token::None)
+        },
+        _ => |lexer| lexer.continue_(),
     }
 }
 
@@ -68,9 +90,22 @@ mod test {
     use crate::test::examples;
 
     #[test]
+    fn comment() {
+        let lexer = Lexer::new("#testing comment\n#comment2\na = 1");
+        let tokens: Vec<Token> = lexer.into_iter().map(|e| e.unwrap().1).collect();
+        let correct: Vec<Token> = vec![
+            Token::None,
+            Token::None,
+            Token::Var("a"),
+            Token::Eq,
+            Token::Number("1"),
+        ];
+        assert_eq!(tokens, correct);
+    }
+
+    #[test]
     fn simple_digit() {
         let lexer = Lexer::new("1 1.2 1e2 1.2e2 1.2e-2");
-
         let tokens: Vec<Token> = lexer.into_iter().map(|e| e.unwrap().1).collect();
         let correct: Vec<Token> = vec![
             Token::Number("1"),
@@ -86,7 +121,6 @@ mod test {
     fn basic() {
         let example = examples::basic();
         let lexer = Lexer::new(&example);
-
         let tokens: Vec<Token> = lexer.into_iter().map(|e| e.unwrap().1).collect();
         let correct: Vec<Token> = vec![
             Token::Var("ans"),
@@ -133,7 +167,6 @@ mod test {
     fn cosine_law() {
         let example = examples::cosine_law();
         let lexer = Lexer::new(&example);
-
         let tokens: Vec<Token> = lexer.into_iter().map(|e| e.unwrap().1).collect();
         let correct: Vec<Token> = vec![
             Token::Var("a"),

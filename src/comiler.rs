@@ -134,6 +134,7 @@ impl<'input> Compiler<'input> {
         let mut to_add_mul = false;
         let mut to_make_func = false;
         let mut to_push_token;
+        let mut paren_depth = 0_u32;
         for token in lexer {
             to_push_token = true;
             if token.is_err() {
@@ -151,13 +152,15 @@ impl<'input> Compiler<'input> {
             let (lloc, token, _rloc) = token.unwrap();
 
             match token {
-                Token::None => panic!("compiler internal error!"),
+                Token::None => continue,
                 Token::Newline => {
-                    to_add_mul = false;
-                    to_make_func = false;
-                    to_neg_sign = false;
                     to_push_token = false;
-                    self.expr_buf.push((lloc, vec![]));
+                    if paren_depth == 0 {
+                        to_add_mul = false;
+                        to_make_func = false;
+                        to_neg_sign = false;
+                        self.expr_buf.push((lloc, vec![]));
+                    }
                 }
                 Token::Comma
                 | Token::Eq
@@ -206,11 +209,13 @@ impl<'input> Compiler<'input> {
                     }
                 }
                 Token::RParen => {
+                    paren_depth -= 1;
                     to_add_mul = true;
                     to_make_func = false;
                     to_neg_sign = false;
                 }
                 Token::LParen => {
+                    paren_depth += 1;
                     to_neg_sign = true;
                     if to_make_func {
                         to_make_func = false;
@@ -248,10 +253,11 @@ impl<'input> Compiler<'input> {
         self.expr_buf.reverse();
 
         for _ in 0..self.expr_buf.len() {
-            let expr = self.parse_expr()?;
-            if expr == Expr::None {
+            if self.expr_buf.last().unwrap().1.is_empty() {
+                self.expr_buf.pop();
                 continue;
             }
+            let expr = self.parse_expr()?;
             match expr {
                 Expr::Inst(inst) => self.ast.push(*inst),
                 Expr::None => panic!("compiler internal error!"),
@@ -269,22 +275,14 @@ impl<'input> Compiler<'input> {
         Ok(&self.ast)
     }
     fn parse_expr(&mut self) -> Result<Expr<'input>, CompilerError> {
-        if self.expr_buf.is_empty() {
-            return Ok(Expr::None);
-        }
-
         if self.expr_buf.last().unwrap().1.is_empty() {
             self.expr_buf.pop();
-            return Ok(Expr::None);
+            return Ok(Expr::Number("0"));
         }
 
         // seperate expressions
         self.oper_tk
             .push((lexgen_util::Loc::default(), Token::None));
-
-        macro_rules! handle_comma_err {
-            ($lloc:ident) => {{}};
-        }
 
         let (rloc, tokens) = self.expr_buf.pop().unwrap();
         for (lloc, token) in tokens {
@@ -355,7 +353,11 @@ impl<'input> Compiler<'input> {
                         }
                     }
                     Token::Comma => {
-                        self.fun_call.push(vec![]);
+                        if self.state.in_funcall == 1 {
+                            self.fun_call.last_mut().unwrap().push(vec![]);
+                        } else {
+                            push_token!(Token::Comma);
+                        }
                     }
                     Token::Plus
                     | Token::Minus

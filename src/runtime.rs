@@ -18,6 +18,7 @@ pub struct Fun<'input> {
 
 #[derive(Debug, Default, Clone)]
 pub struct Scope<'input> {
+    name: &'input str,
     var_table: HashMap<&'input str, Rc<RefCell<Var>>>,
     fun_table: HashMap<&'input str, Rc<RefCell<Fun<'input>>>>,
 }
@@ -56,6 +57,9 @@ impl<'input> Scope<'input> {
     pub fn set_fun(&mut self, name: &'input str, fun: Fun<'input>) {
         self.fun_table.insert(name, Rc::new(RefCell::new(fun)));
     }
+    pub fn add_ref_var(&mut self, name: &'input str, ref_var: Rc<RefCell<Var>>) {
+        self.var_table.insert(name, ref_var);
+    }
 }
 
 impl<'input> Fun<'input> {
@@ -77,6 +81,11 @@ impl<'input> Runtime<'input> {
         // add builtin constant
         runtime.builtin.add_var("pi", Var::from(PI));
         runtime.builtin.add_var("e", Var::from(E));
+        runtime.builtin.add_var("0", Var::from(0));
+        runtime.builtin.add_var("1", Var::from(1));
+        runtime
+            .builtin
+            .add_var("None", Var::from_string(String::new()));
 
         // add builtin functions
         // NOTE: need to handle exec_inst()::BuiltinFnCall(_)
@@ -99,6 +108,8 @@ impl<'input> Runtime<'input> {
                 )
             };
         }
+        // IO functions
+        add_builtin_fn! { print(x) };
         // math functions
         add_builtin_fn! { sin(x) };
         add_builtin_fn! { cos(x) };
@@ -125,9 +136,25 @@ impl<'input> Runtime<'input> {
         // logic functions
         add_builtin_fn! { if(x) }
         add_builtin_fn! { else(x) }
+        // special functions
+        runtime.builtin.set_fun(
+            "$",
+            Fun {
+                para_name: vec!["x"],
+                data: vec![Inst::BultinFnCall("$")],
+            },
+        );
+        runtime.builtin.set_fun(
+            ".",
+            Fun {
+                para_name: vec!["x"],
+                data: vec![Inst::BultinFnCall(".")],
+            },
+        );
 
         // add global scope
-        let global = Scope::default();
+        let mut global = Scope::default();
+        global.name = "__global__";
         runtime.locals.push(global);
 
         runtime
@@ -164,17 +191,22 @@ impl<'input> Runtime<'input> {
         unsafe {
             if self.stack_depth >= MAX_STACK_DEPTH {
                 let max_stack_depth = MAX_STACK_DEPTH;
+                self.stack_depth = 0;
                 return Err(RuntimeError {
                     line,
                     msg: format!("reached maximum stack depth {}", max_stack_depth),
                 });
             }
         }
-        let mut ret = None;
         for inst in fun.data.iter() {
-            ret = Some(self.exec_inst(inst, line)?);
+            let ret = self.exec_inst(inst, line)?;
+            self.locals
+                .last_mut()
+                .unwrap()
+                .add_ref_var("__return__", ret);
         }
         self.stack_depth -= 1;
+        let ret = self.locals.last().unwrap().get_var("__return__");
         match ret {
             Some(val) => Ok(val),
             None => panic!("runtime internal error!"),
@@ -212,9 +244,12 @@ impl<'input> Runtime<'input> {
                             });
                         }
                     }
-                }
-                .clone();
-                if !is_env(name) && fun.borrow().para_name.len() != args.len() {
+                };
+                let fun_para_len = fun.borrow().para_name.len();
+                let arg_len = args.len();
+                let is_name_env = is_env(name);
+                if is_name_env && arg_len > fun_para_len || !is_name_env && fun_para_len != arg_len
+                {
                     return Err(RuntimeError {
                         line,
                         msg: format!(
@@ -225,15 +260,37 @@ impl<'input> Runtime<'input> {
                         ),
                     });
                 }
+
                 let mut sub_local = Scope::new();
+                sub_local.name = name;
                 for (pname, expr) in fun.borrow().para_name.iter().zip(args.iter()) {
                     let value = self.exec_expr(expr, line)?;
-                    sub_local.add_var(pname, Var::clone(&value.borrow()));
+                    sub_local.add_ref_var(pname, value);
                 }
                 self.locals.push(sub_local);
                 let rval = self.exec_fun(&fun.borrow(), line)?;
                 self.locals.pop();
                 Ok(rval)
+                // if &self.locals.last().unwrap().name == name {
+                //     // Tail Call Optimization
+                //     for (pname, expr) in fun.borrow().para_name.iter().zip(args.iter()) {
+                //         let value = self.exec_expr(expr, line)?;
+                //         self.locals.last_mut().unwrap().add_ref_var(pname, value);
+                //     }
+                //     let rval = self.exec_fun(&fun.borrow(), line)?;
+                //     Ok(rval)
+                // } else {
+                //     let mut sub_local = Scope::new();
+                //     sub_local.name = name;
+                //     for (pname, expr) in fun.borrow().para_name.iter().zip(args.iter()) {
+                //         let value = self.exec_expr(expr, line)?;
+                //         sub_local.add_ref_var(pname, value);
+                //     }
+                //     self.locals.push(sub_local);
+                //     let rval = self.exec_fun(&fun.borrow(), line)?;
+                //     self.locals.pop();
+                //     Ok(rval)
+                // }
             }
             Expr::Number(data) => {
                 if let Some(evar) = self.builtin.get_var(data) {
@@ -279,10 +336,25 @@ impl<'input> Runtime<'input> {
         inst: &Inst<'input>,
         line: usize,
     ) -> Result<Rc<RefCell<Var>>, RuntimeError> {
+        macro_rules! check_none {
+            ($x:ident) => {{
+                if $x.borrow().type_ == VarType::None {
+                    return Err(RuntimeError {
+                        line,
+                        msg: format!("using None type for operand or argument"),
+                    });
+                }
+            }};
+            ($arg:ident $(, $args:ident),*) => {{
+                check_none!($arg);
+                check_none!($($args),*);
+            }};
+        }
         macro_rules! handle_binary {
             ($lhs:ident $op:tt $rhs:ident) => {{
                 let lhs = self.exec_expr($lhs, line)?;
                 let rhs = self.exec_expr($rhs, line)?;
+                check_none!(lhs, rhs);
                 let eval = Rc::new(RefCell::new(&*lhs.borrow() $op &*rhs.borrow()));
                 Ok(eval)
             }};
@@ -296,14 +368,16 @@ impl<'input> Runtime<'input> {
             Inst::Mod(lhs, rhs) => handle_binary!(lhs % rhs),
             Inst::Mul(lhs, rhs) => {
                 let lhs = self.exec_expr(lhs, line)?;
+                check_none!(lhs);
                 // check lhs is zero for logic function
                 if lhs.borrow().type_ <= VarType::I64 {
                     let lvalue: i64 = (&*lhs.borrow()).into();
                     if lvalue == 0 {
-                        return Ok(Rc::new(RefCell::new(Var::from(0))));
+                        return Ok(lhs);
                     }
                 }
                 let rhs = self.exec_expr(rhs, line)?;
+                check_none!(rhs);
                 let eval = Rc::new(RefCell::new(&*lhs.borrow() * &*rhs.borrow()));
                 Ok(eval)
             }
@@ -311,21 +385,30 @@ impl<'input> Runtime<'input> {
                 Expr::None => panic!("compiler internal error (in runtime)"),
                 Expr::Var(name) => {
                     let rhs = self.exec_expr(rhs, line)?;
+                    if rhs.borrow().type_ == VarType::None {
+                        return Err(RuntimeError {
+                            line,
+                            msg: format!(
+                                "cannot assign None to a variable, usually caused by assigning function definition expression to a variable"
+                            ),
+                        });
+                    }
                     if self.builtin.has_var(name) {
                         return Err(RuntimeError {
                             line,
                             msg: format!("overriding builtin constant {}", name),
                         });
                     }
-                    if self.locals.last().unwrap().has_var(name) {
-                        let lhs = self.exec_expr(&Expr::Var(name), line)?;
-                        *lhs.borrow_mut() = Var::clone(&rhs.borrow());
-                    } else {
-                        self.locals
-                            .last_mut()
-                            .unwrap()
-                            .add_var(name, Var::clone(&rhs.borrow()));
+                    for scope in self.locals.iter().rev() {
+                        if let Some(var) = scope.get_var(name) {
+                            *var.borrow_mut() = Var::clone(&rhs.borrow());
+                            return Ok(var);
+                        }
                     }
+                    self.locals
+                        .last_mut()
+                        .unwrap()
+                        .add_var(name, Var::clone(&rhs.borrow()));
                     Ok(self.locals.last().unwrap().get_var(name).unwrap())
                 }
                 Expr::Inst(_) => Err(RuntimeError {
@@ -419,6 +502,7 @@ impl<'input> Runtime<'input> {
                         let Some(x) = scope.get_var("x") else {
                             panic!("runtime internal error!")
                         };
+                        check_none!(x);
                         if x.borrow().type_ <= VarType::F64 {
                             let x: f64 = (&*x.borrow()).into();
                             Ok(Rc::new(RefCell::new(Var::from(x.$rust_fn($($default_args),*)))))
@@ -432,6 +516,7 @@ impl<'input> Runtime<'input> {
                     ($env_var:ident, $limit:expr) => {{
                         let scope = self.locals.last_mut().expect("runtime internal error!");
                         if let Some(x) = scope.get_var("x") {
+                            check_none!(x);
                             if x.borrow().type_ >= VarType::F64 {
                                 return Err(RuntimeError {
                                     line,
@@ -481,6 +566,7 @@ impl<'input> Runtime<'input> {
                         let Some(x) = scope.get_var("x") else {
                             panic!("runtime internal error!")
                         };
+                        check_none!(x);
                         if x.borrow().type_ > VarType::I64 {
                             return Err(RuntimeError {
                                 line,
@@ -491,6 +577,9 @@ impl<'input> Runtime<'input> {
                         let result = (x $logic_oper $stand) as i32;
                         Ok(Rc::new(RefCell::new(Var::from(result))))
                     }};
+                }
+                macro_rules! handle_special_fun {
+                    ($value:expr) => {{ Ok(self.builtin.get_var(stringify!($value)).unwrap()) }};
                 }
                 match name {
                     &"sin" => handle_arg_1!(sin),
@@ -516,6 +605,16 @@ impl<'input> Runtime<'input> {
                     &"__print_set_inst__" => handle_integer_env_fun!(PRINT_SET_INST, 1),
                     &"if" => handle_logic_fun!(x == 0),
                     &"else" => handle_logic_fun!(x != 0),
+                    &"$" => handle_special_fun!(None),
+                    &"." => handle_special_fun!(1),
+                    &"print" => {
+                        let scope = self.locals.last_mut().expect("runtime internal error!");
+                        let Some(x) = scope.get_var("x") else {
+                            panic!("runtime internal error!")
+                        };
+                        self.output.push(x.borrow().to_string());
+                        Ok(Rc::new(RefCell::new(Var::none())))
+                    }
                     _ => panic!("runtime internal error!"),
                 }
             }
@@ -526,10 +625,7 @@ impl<'input> Runtime<'input> {
 #[cfg(test)]
 mod test {
     use super::Runtime;
-    use crate::{
-        env::PRINT_SET_INST,
-        test::{examples, simple_expr},
-    };
+    use crate::test::{examples, simple_expr};
 
     #[test]
     fn inst_mod_1() {
