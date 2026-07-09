@@ -134,6 +134,7 @@ impl<'input> Compiler<'input> {
         let mut to_add_mul = false;
         let mut to_make_func = false;
         let mut to_push_token;
+        let mut paren_depth = 0_u32;
         for token in lexer {
             to_push_token = true;
             if token.is_err() {
@@ -151,13 +152,15 @@ impl<'input> Compiler<'input> {
             let (lloc, token, _rloc) = token.unwrap();
 
             match token {
-                Token::None => panic!("compiler internal error!"),
+                Token::None => continue,
                 Token::Newline => {
-                    to_add_mul = false;
-                    to_make_func = false;
-                    to_neg_sign = false;
                     to_push_token = false;
-                    self.expr_buf.push((lloc, vec![]));
+                    if paren_depth == 0 {
+                        to_add_mul = false;
+                        to_make_func = false;
+                        to_neg_sign = false;
+                        self.expr_buf.push((lloc, vec![]));
+                    }
                 }
                 Token::Comma
                 | Token::Eq
@@ -206,11 +209,13 @@ impl<'input> Compiler<'input> {
                     }
                 }
                 Token::RParen => {
+                    paren_depth -= 1;
                     to_add_mul = true;
                     to_make_func = false;
                     to_neg_sign = false;
                 }
                 Token::LParen => {
+                    paren_depth += 1;
                     to_neg_sign = true;
                     if to_make_func {
                         to_make_func = false;
@@ -348,7 +353,11 @@ impl<'input> Compiler<'input> {
                         }
                     }
                     Token::Comma => {
-                        self.fun_call.last_mut().unwrap().push(vec![]);
+                        if self.state.in_funcall == 1 {
+                            self.fun_call.last_mut().unwrap().push(vec![]);
+                        } else {
+                            push_token!(Token::Comma);
+                        }
                     }
                     Token::Plus
                     | Token::Minus
