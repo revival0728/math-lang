@@ -188,7 +188,6 @@ it is possible to read or get ENV by function `__[ENV_name]__()`, where `[ENV_na
 - nested function passes wrong arguments
 
 ### TODO
-- [ ] Change Cargo.toml version
 - [ ] implement BigNum, fix i64 and f64 overflow problem
 - [ ] improve error message
 - [ ] add more logic function
