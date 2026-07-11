@@ -426,7 +426,6 @@ impl<'input> Runtime<'input> {
                             msg: format!("overriding builtin constant {}", name),
                         })
                     } else {
-                        // TODO: add custom functions
                         let mut para_name = vec![];
                         for p in param {
                             match p {
@@ -737,6 +736,31 @@ mod test {
         let mut runtime = Runtime::new();
         let output = runtime.execute(&source).unwrap();
         let correct = vec!["1", "1", "2", "3", "5", "55"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect::<Vec<String>>();
+        assert_eq!(output, &correct);
+    }
+
+    #[test]
+    fn bug_1() {
+        let mut runtime = Runtime::new();
+        runtime.execute("()()").unwrap();
+        let output = &runtime.output;
+        let correct = vec!["0"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect::<Vec<String>>();
+        assert_eq!(output, &correct);
+    }
+
+    #[test]
+    fn bug_2() {
+        let mut runtime = Runtime::new();
+        runtime.execute("sum(a, b) = a + b").unwrap();
+        runtime.execute("sin(sum(1, -1))").unwrap();
+        let output = &runtime.output;
+        let correct = vec!["0.0000000"]
             .iter()
             .map(|s| s.to_string())
             .collect::<Vec<String>>();
