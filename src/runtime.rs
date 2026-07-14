@@ -19,6 +19,7 @@ pub struct Fun<'input> {
 #[derive(Debug, Default, Clone)]
 pub struct Scope<'input> {
     name: &'input str,
+    stack_depth: u32,
     var_table: HashMap<&'input str, Rc<RefCell<Var>>>,
     fun_table: HashMap<&'input str, Rc<RefCell<Fun<'input>>>>,
 }
@@ -28,7 +29,6 @@ pub struct Runtime<'input> {
     builtin: Scope<'input>,
     locals: Vec<Scope<'input>>,
     output: Vec<String>,
-    stack_depth: u32,
 }
 
 impl<'input> Scope<'input> {
@@ -78,6 +78,7 @@ impl<'input> Runtime<'input> {
     pub fn new() -> Self {
         let mut runtime = Self::default();
 
+        runtime.builtin.name = "__builtin__";
         // add builtin constant
         runtime.builtin.add_var("pi", Var::from(PI));
         runtime.builtin.add_var("e", Var::from(E));
@@ -155,6 +156,7 @@ impl<'input> Runtime<'input> {
         // add global scope
         let mut global = Scope::default();
         global.name = "__global__";
+        global.stack_depth = 0;
         runtime.locals.push(global);
 
         runtime
@@ -187,11 +189,10 @@ impl<'input> Runtime<'input> {
         fun: &Fun<'input>,
         line: usize,
     ) -> Result<Rc<RefCell<Var>>, RuntimeError> {
-        self.stack_depth += 1;
         unsafe {
-            if self.stack_depth >= MAX_STACK_DEPTH {
+            if self.locals.last().unwrap().stack_depth > MAX_STACK_DEPTH {
                 let max_stack_depth = MAX_STACK_DEPTH;
-                self.stack_depth = 0;
+                self.locals.last_mut().unwrap().stack_depth = 0;
                 return Err(RuntimeError {
                     line,
                     msg: format!("reached maximum stack depth {}", max_stack_depth),
@@ -205,9 +206,7 @@ impl<'input> Runtime<'input> {
                 .unwrap()
                 .add_ref_var("__return__", ret);
         }
-        self.stack_depth -= 1;
-        let ret = self.locals.last().unwrap().get_var("__return__");
-        match ret {
+        match self.locals.last().unwrap().get_var("__return__") {
             Some(val) => Ok(val),
             None => panic!("runtime internal error!"),
         }
@@ -263,6 +262,7 @@ impl<'input> Runtime<'input> {
 
                 let mut sub_local = Scope::new();
                 sub_local.name = name;
+                sub_local.stack_depth = self.locals.last().unwrap().stack_depth + 1;
                 for (pname, expr) in fun.borrow().para_name.iter().zip(args.iter()) {
                     let value = self.exec_expr(expr, line)?;
                     sub_local.add_ref_var(pname, value);
@@ -271,26 +271,6 @@ impl<'input> Runtime<'input> {
                 let rval = self.exec_fun(&fun.borrow(), line)?;
                 self.locals.pop();
                 Ok(rval)
-                // if &self.locals.last().unwrap().name == name {
-                //     // Tail Call Optimization
-                //     for (pname, expr) in fun.borrow().para_name.iter().zip(args.iter()) {
-                //         let value = self.exec_expr(expr, line)?;
-                //         self.locals.last_mut().unwrap().add_ref_var(pname, value);
-                //     }
-                //     let rval = self.exec_fun(&fun.borrow(), line)?;
-                //     Ok(rval)
-                // } else {
-                //     let mut sub_local = Scope::new();
-                //     sub_local.name = name;
-                //     for (pname, expr) in fun.borrow().para_name.iter().zip(args.iter()) {
-                //         let value = self.exec_expr(expr, line)?;
-                //         sub_local.add_ref_var(pname, value);
-                //     }
-                //     self.locals.push(sub_local);
-                //     let rval = self.exec_fun(&fun.borrow(), line)?;
-                //     self.locals.pop();
-                //     Ok(rval)
-                // }
             }
             Expr::Number(data) => {
                 if let Some(evar) = self.builtin.get_var(data) {
@@ -473,7 +453,7 @@ impl<'input> Runtime<'input> {
                         rhs = -rhs;
                         reci = true;
                     }
-                    let mut ret = Var::new("1").unwrap();
+                    let mut ret = Var::from(1);
                     while rhs > 0 {
                         if rhs & 1 == 1 {
                             ret = &ret * &lhs;

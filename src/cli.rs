@@ -102,6 +102,13 @@ impl<'cli> CLI<'cli> {
         };
     }
     pub fn run(&mut self, args: ExArgs) {
+        // let mut args = args;
+        // args.source = Some(
+        //     std::path::PathBuf::new()
+        //         .join(".")
+        //         .join("scripts")
+        //         .join("test_stack.mls"),
+        // );
         if let Some(source) = args.source.clone() {
             unsafe { PRINT_SET_INST = 0 };
             self.set_env(&args);

@@ -172,21 +172,10 @@ it is possible to read or get ENV by function `__[ENV_name]__()`, where `[ENV_na
 
 ## Development
 ### Main Changes
-- optimized memory usage
-- support formattive style source code [example](/examples/formattive.mls) here
-- added print function
-- support comment
-
-### Fixed Bugs
-- forget to reset stack_depth after error occured
-- panic while assign None (function definition expression) to a variable
-- panic while passing None to builtin functions
-- valid consecutive parens "()()..." but got error
-- panic while passing more than one arguement to the functions
-- ENV function output error while it's valid
-- nested function passes wrong arguments
+- store stack depth in Scope instead of runtime
 
 ### TODO
+- [ ] Change version of Cargo.toml
 - [ ] implement BigNum, fix i64 and f64 overflow problem
 - [ ] improve error message
 - [ ] add more logic function
