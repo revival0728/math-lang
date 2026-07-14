@@ -16,12 +16,25 @@ pub struct Fun<'input> {
     data: Vec<Inst<'input>>,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum ExecMode {
+    Children,
+    Self_,
+}
+
+#[derive(Debug, Clone)]
+pub enum ExecType<'input, 'exec> {
+    Expr(&'exec Expr<'input>),
+    Fun(Rc<Fun<'input>>),
+    Inst(&'exec Inst<'input>),
+}
+
 #[derive(Debug, Default, Clone)]
 pub struct Scope<'input> {
     name: &'input str,
     stack_depth: u32,
     var_table: HashMap<&'input str, Rc<RefCell<Var>>>,
-    fun_table: HashMap<&'input str, Rc<RefCell<Fun<'input>>>>,
+    fun_table: HashMap<&'input str, Rc<Fun<'input>>>,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -38,15 +51,14 @@ impl<'input> Scope<'input> {
     pub fn get_var(&self, name: &'input str) -> Option<Rc<RefCell<Var>>> {
         self.var_table.get(name).cloned()
     }
-    pub fn get_fun(&self, name: &'input str) -> Option<Rc<RefCell<Fun<'input>>>> {
+    pub fn get_fun(&self, name: &'input str) -> Option<Rc<Fun<'input>>> {
         self.fun_table.get(name).cloned()
     }
     pub fn add_var(&mut self, name: &'input str, value: Var) {
         self.var_table.insert(name, Rc::new(RefCell::new(value)));
     }
     pub fn add_fun(&mut self, name: &'input str, para_name: Vec<&'input str>) {
-        self.fun_table
-            .insert(name, Rc::new(RefCell::new(Fun::new(para_name))));
+        self.fun_table.insert(name, Rc::new(Fun::new(para_name)));
     }
     pub fn has_var(&self, name: &'input str) -> bool {
         self.var_table.contains_key(name)
@@ -55,7 +67,7 @@ impl<'input> Scope<'input> {
         self.fun_table.contains_key(name)
     }
     pub fn set_fun(&mut self, name: &'input str, fun: Fun<'input>) {
-        self.fun_table.insert(name, Rc::new(RefCell::new(fun)));
+        self.fun_table.insert(name, Rc::new(fun));
     }
     pub fn add_ref_var(&mut self, name: &'input str, ref_var: Rc<RefCell<Var>>) {
         self.var_table.insert(name, ref_var);
@@ -244,7 +256,7 @@ impl<'input> Runtime<'input> {
                         }
                     }
                 };
-                let fun_para_len = fun.borrow().para_name.len();
+                let fun_para_len = fun.para_name.len();
                 let arg_len = args.len();
                 let is_name_env = is_env(name);
                 if is_name_env && arg_len > fun_para_len || !is_name_env && fun_para_len != arg_len
@@ -254,7 +266,7 @@ impl<'input> Runtime<'input> {
                         msg: format!(
                             "function {}() expect {} arguments got {}",
                             name,
-                            fun.borrow().para_name.len(),
+                            fun.para_name.len(),
                             args.len()
                         ),
                     });
@@ -263,12 +275,12 @@ impl<'input> Runtime<'input> {
                 let mut sub_local = Scope::new();
                 sub_local.name = name;
                 sub_local.stack_depth = self.locals.last().unwrap().stack_depth + 1;
-                for (pname, expr) in fun.borrow().para_name.iter().zip(args.iter()) {
+                for (pname, expr) in fun.para_name.iter().zip(args.iter()) {
                     let value = self.exec_expr(expr, line)?;
                     sub_local.add_ref_var(pname, value);
                 }
                 self.locals.push(sub_local);
-                let rval = self.exec_fun(&fun.borrow(), line)?;
+                let rval = self.exec_fun(&fun, line)?;
                 self.locals.pop();
                 Ok(rval)
             }
