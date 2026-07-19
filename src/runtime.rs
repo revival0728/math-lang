@@ -180,7 +180,6 @@ impl<'input> Runtime<'input> {
             }
             compiler.flatten()
         };
-        println!("{:#?}", all_inst);
         for (idx, inst) in all_inst.iter().enumerate() {
             let to_print = if let &Inst::Set(_, _) = inst {
                 unsafe { PRINT_SET_INST == 1 }
