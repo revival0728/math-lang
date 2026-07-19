@@ -29,6 +29,7 @@ pub struct Runtime<'input> {
     builtin: Scope<'input>,
     locals: Vec<Scope<'input>>,
     output: Vec<String>,
+    out_buffer: String,
 }
 
 impl<'input> Scope<'input> {
@@ -109,8 +110,9 @@ impl<'input> Runtime<'input> {
                 )
             };
         }
-        // IO functions
+        // output functions
         add_builtin_fn! { print(x) };
+        add_builtin_fn! { println(x) };
         // math functions
         add_builtin_fn! { sin(x) };
         add_builtin_fn! { cos(x) };
@@ -181,6 +183,11 @@ impl<'input> Runtime<'input> {
             if to_print && !out_str.is_empty() {
                 self.output.push(out_str);
             }
+        }
+        if !self.out_buffer.is_empty() {
+            let output = self.out_buffer.drain(..).collect();
+            self.output.push(output);
+            self.out_buffer.clear();
         }
         Ok(&self.output)
     }
@@ -308,6 +315,10 @@ impl<'input> Runtime<'input> {
                     }
                 }
                 Ok(var.expect("runtime internal error!"))
+            }
+            Expr::String(str) => {
+                let var = Var::from_string(str.to_string());
+                Ok(Rc::new(RefCell::new(var)))
             }
         }
     }
@@ -437,6 +448,10 @@ impl<'input> Runtime<'input> {
                         }))))
                     }
                 }
+                Expr::String(_) => Err(RuntimeError {
+                    line,
+                    msg: format!("cannot assign value to string literal"),
+                }),
             },
             Inst::Neg(expr) => {
                 let val = self.exec_expr(expr, line)?;
@@ -591,7 +606,18 @@ impl<'input> Runtime<'input> {
                         let Some(x) = scope.get_var("x") else {
                             panic!("runtime internal error!")
                         };
-                        self.output.push(x.borrow().to_string());
+                        self.out_buffer.push_str(&x.borrow().to_string());
+                        Ok(Rc::new(RefCell::new(Var::none())))
+                    }
+                    &"println" => {
+                        let scope = self.locals.last_mut().expect("runtime internal error!");
+                        let Some(x) = scope.get_var("x") else {
+                            panic!("runtime internal error!")
+                        };
+                        self.out_buffer.push_str(&x.borrow().to_string());
+                        let output = self.out_buffer.drain(..).collect();
+                        self.output.push(output);
+                        self.out_buffer.clear();
                         Ok(Rc::new(RefCell::new(Var::none())))
                     }
                     _ => panic!("runtime internal error!"),

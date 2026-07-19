@@ -84,6 +84,8 @@ you should never use variable name with format `__[name]__`, it is used by ENV, 
 - `*`: auto insertion bewteen
   - number and variable
   - variable and variable
+  - right paren and left paren
+  - number and left paren
 
 ## Type System
 types are automatically determined, depends on precision and size of value
@@ -100,6 +102,9 @@ where `f64`, `i64`, `i32` are Rust primitve types, `BigNum` is used only when pr
 currently values are limited by Rust primitive type `f64`, will change after implementing `BigNum`
 
 which is in [-1.7976931348623157e+308, 1.7976931348623157e+308]
+
+## About Comment
+use char `#` to comment something, check out example [here](/examples/formattive.mls)
 
 ## Builtins
 ### Constants
@@ -130,6 +135,18 @@ which is in [-1.7976931348623157e+308, 1.7976931348623157e+308]
 | else(x) | return `x != 0` where `x` must be an integer |
 
 - it works because runtime will check `lhs == 0`, if true then will not calcuate `rhs`
+
+### Output Functions
+
+| name | document |
+|------|----------|
+| print(x) | output `x` |
+| println(x) | output `x` and a newline |
+
+- outputs by output functions will be buffered until calling `println()` or reached end of source
+- source in REPL is single line
+- source in file is entire file
+
 
 ### Math Functions
 
@@ -170,9 +187,15 @@ it is possible to read or get ENV by function `__[ENV_name]__()`, where `[ENV_na
 
 - maximum stack size is not ENV, but can be configured by execution argument, by default is 64MB
 
+## About String literal
+- string literals cannot be stored in variable, parsed as None in this language
+- use it to have better output
+- escape chars are not supported
+
 ## Development
 ### Main Changes
 - store stack depth in Scope instead of runtime
+- support string literal
 
 ### TODO
 - [ ] Change version of Cargo.toml
