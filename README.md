@@ -196,12 +196,15 @@ it is possible to read or get ENV by function `__[ENV_name]__()`, where `[ENV_na
 ### Main Changes
 - store stack depth in Scope instead of runtime
 - support string literal
+- change default MAX_STACK_DEPTH to 1024
+
+### Optimizations
+- preallocate memory of stack scopes
 
 ### TODO
 - [ ] Change version of Cargo.toml
-- [ ] implement BigNum, fix i64 and f64 overflow problem
+- [ ] implement BigNum, fix i64 and f64 overflow problem (rarely happened)
 - [ ] improve error message
 - [ ] add more logic function
 - [ ] maybe array?
-- [ ] try to optimize memory usage
 - [ ] fix tail call optimization to recursion

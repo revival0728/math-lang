@@ -79,6 +79,9 @@ impl<'input> Runtime<'input> {
     pub fn new() -> Self {
         let mut runtime = Self::default();
 
+        // pre allocate locals
+        runtime.locals = Vec::with_capacity(unsafe { MAX_STACK_DEPTH + 1 } as usize);
+
         runtime.builtin.name = "__builtin__";
         // add builtin constant
         runtime.builtin.add_var("pi", Var::from(PI));

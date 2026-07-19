@@ -1,5 +1,7 @@
-$(__max_stack_depth__(1024))
+N = 5 * 10^4
+
+$(__max_stack_depth__(N + 5))
 
 sum(n) = (if(n)() + else(n)(n + sum(n - 1)))
 
-sum(750)
+sum(N)
