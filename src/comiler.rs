@@ -11,6 +11,7 @@ pub enum Expr<'input> {
     Var(&'input str),
     FunCall(&'input str, Vec<Expr<'input>>),
     Inst(Box<Inst<'input>>),
+    FunDefine(Vec<Inst<'input>>),
 }
 
 #[derive(Debug, Default, PartialEq, Eq, Clone)]
@@ -35,6 +36,7 @@ pub struct CompilerState {
     in_expr: usize,
     in_funcall: usize,
     expr_depth: usize,
+    max_tmp_var: usize,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -42,10 +44,12 @@ pub struct Compiler<'input> {
     source: &'input str,
     state: CompilerState,
     ast: Vec<Inst<'input>>,
+    ilist: Vec<Inst<'input>>,
     oper_tk: Vec<(lexgen_util::Loc, Token<'input>)>,
     idnt_tk: Vec<(lexgen_util::Loc, Expr<'input>)>,
     fun_call: Vec<Vec<Vec<(lexgen_util::Loc, Token<'input>)>>>,
     expr_buf: Vec<(lexgen_util::Loc, Vec<(lexgen_util::Loc, Token<'input>)>)>,
+    tmp_var_list: Vec<&'input str>,
 }
 
 impl<'input> Inst<'input> {
@@ -108,19 +112,23 @@ impl<'input> Compiler<'input> {
     pub fn new(source: &'input str) -> Self {
         let state = CompilerState::default();
         let ast = Vec::new();
+        let ilist = Vec::new();
         let oper_tk = Vec::new();
         let idnt_tk = Vec::new();
         let fun_call = Vec::new();
         let expr_buf = Vec::new();
+        let tmp_var_list = Vec::new();
 
         Compiler {
             source,
             state,
             ast,
+            ilist,
             oper_tk,
             idnt_tk,
             fun_call,
             expr_buf,
+            tmp_var_list,
         }
     }
 }
@@ -564,6 +572,85 @@ impl<'input> Compiler<'input> {
             Expr::Inst(inst) => Ok(*inst),
             _ => Ok(Inst::Expr(expr)),
         }
+    }
+
+    pub fn flatten(&mut self) -> &Vec<Inst<'input>> {
+        if self.ilist.is_empty() {
+            for inst in self.ast.clone() {
+                self.flat_inst(inst);
+            }
+        }
+        &self.ilist
+    }
+    fn flat_expr(&mut self, expr: Expr<'input>) -> Expr<'input> {
+        match expr {
+            Expr::None => panic!("compiler internal error!"),
+            Expr::Inst(sub_inst) => self.flat_inst(*sub_inst),
+            _ => expr,
+        }
+    }
+    fn flat_inst(&mut self, inst: Inst<'input>) -> Expr<'input> {
+        macro_rules! flat_binary {
+            ($inst:expr, $lhs:ident, $rhs:ident) => {{
+                let lhs = self.flat_expr($lhs);
+                let rhs = self.flat_expr($rhs);
+                let tmp = self.new_tmp_var();
+                self.ilist.push(Inst::Set(
+                    tmp.clone(),
+                    Expr::Inst(Box::new($inst(lhs, rhs))),
+                ));
+                tmp
+            }};
+        }
+        match inst {
+            Inst::None | Inst::BultinFnCall(_) => panic!("compiler internal error!"),
+            Inst::Expr(expr) => {
+                let expr = self.flat_expr(expr);
+                self.ilist.push(Inst::Expr(expr.clone()));
+                expr
+            }
+            Inst::Neg(expr) => {
+                let expr = self.flat_expr(expr);
+                let tmp = self.new_tmp_var();
+                self.ilist.push(Inst::Set(tmp.clone(), expr));
+                tmp
+            }
+            Inst::Add(lhs, rhs) => flat_binary!(Inst::Add, lhs, rhs),
+            Inst::Sub(lhs, rhs) => flat_binary!(Inst::Sub, lhs, rhs),
+            Inst::Mul(lhs, rhs) => flat_binary!(Inst::Mul, lhs, rhs),
+            Inst::Div(lhs, rhs) => flat_binary!(Inst::Div, lhs, rhs),
+            Inst::Mod(lhs, rhs) => flat_binary!(Inst::Mod, lhs, rhs),
+            Inst::Pow(lhs, rhs) => flat_binary!(Inst::Pow, lhs, rhs),
+            Inst::Set(lhs, rhs) => match lhs {
+                Expr::FunCall(name, args) => {
+                    let cur_len = self.ilist.len();
+                    let lhs = Expr::FunCall(name, args);
+                    let _rhs = self.flat_expr(rhs);
+                    let body = self.ilist.split_off(cur_len);
+                    self.ilist
+                        .push(Inst::Set(lhs.clone(), Expr::FunDefine(body)));
+                    lhs
+                }
+                _ => {
+                    let rhs = self.flat_expr(rhs);
+                    self.ilist.push(Inst::Set(lhs.clone(), rhs));
+                    self.reset_tmp_var();
+                    lhs
+                }
+            },
+        }
+    }
+    fn new_tmp_var(&mut self) -> Expr<'input> {
+        if self.state.max_tmp_var >= self.tmp_var_list.len() {
+            let str = format!("__{}__", self.state.max_tmp_var).leak();
+            self.tmp_var_list.push(str);
+        }
+        let ret = Expr::Var(self.tmp_var_list[self.state.max_tmp_var]);
+        self.state.max_tmp_var += 1;
+        ret
+    }
+    fn reset_tmp_var(&mut self) {
+        self.state.max_tmp_var = 0;
     }
 }
 

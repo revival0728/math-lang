@@ -32,6 +32,10 @@ pub struct ExArgs {
     /// Maximum stack size
     #[arg(long, value_name = "BYTES")]
     pub max_stack_size: Option<usize>,
+
+    /// Flatten instructions into list
+    #[arg(long, value_name = "VALUE")]
+    flatten_inst: Option<u32>,
 }
 
 pub struct CLI<'cli> {
@@ -70,6 +74,7 @@ impl<'cli> CLI<'cli> {
             PRINT_SET_INST = args.env_print_set_env.unwrap_or(PRINT_SET_INST);
             DETAIL_DEPTH = args.env_detail_depth.unwrap_or(DETAIL_DEPTH);
             MAX_STACK_DEPTH = args.env_max_stack_depth.unwrap_or(MAX_STACK_DEPTH);
+            FLATTEN_INST = args.flatten_inst.unwrap_or(FLATTEN_INST);
         }
     }
     fn exec_source(&mut self, source: String, repl: bool) {

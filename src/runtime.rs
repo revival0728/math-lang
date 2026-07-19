@@ -1,3 +1,4 @@
+use crate::comiler::Expr::FunDefine;
 use crate::comiler::{Compiler, Expr, Inst};
 use crate::env::*;
 use crate::error::{GlobalError, RuntimeError};
@@ -165,11 +166,22 @@ impl<'input> Runtime<'input> {
     }
     pub fn execute(&mut self, source: &'input str) -> Result<&Vec<String>, GlobalError> {
         let mut compiler = Compiler::new(source);
-        let ast = match compiler.compile() {
-            Ok(ast) => ast,
-            Err(ce) => return Err(GlobalError::CE(ce)),
+        let flatten_inst = unsafe { FLATTEN_INST };
+        let all_inst = if flatten_inst == 0 {
+            let ast = match compiler.compile() {
+                Ok(ast) => ast,
+                Err(ce) => return Err(GlobalError::CE(ce)),
+            };
+            ast
+        } else {
+            match compiler.compile() {
+                Ok(_) => {}
+                Err(ce) => return Err(GlobalError::CE(ce)),
+            }
+            compiler.flatten()
         };
-        for (idx, inst) in ast.iter().enumerate() {
+        println!("{:#?}", all_inst);
+        for (idx, inst) in all_inst.iter().enumerate() {
             let to_print = if let &Inst::Set(_, _) = inst {
                 unsafe { PRINT_SET_INST == 1 }
             } else {
@@ -179,6 +191,9 @@ impl<'input> Runtime<'input> {
                 Ok(val) => val,
                 Err(ce) => return Err(GlobalError::RE(ce)),
             };
+            if flatten_inst == 1 {
+                continue;
+            }
             let out_str = output.borrow().to_string();
             if to_print && !out_str.is_empty() {
                 self.output.push(out_str);
@@ -224,7 +239,7 @@ impl<'input> Runtime<'input> {
         line: usize,
     ) -> Result<Rc<RefCell<Var>>, RuntimeError> {
         match expr {
-            Expr::None => panic!("compiler internal error! (in runtime)"),
+            Expr::None | Expr::FunDefine(_) => panic!("compiler internal error! (in runtime)"),
             Expr::Inst(sub_inst) => self.exec_inst(sub_inst.as_ref(), line),
             Expr::FunCall(name, args) => {
                 let fun = {
@@ -373,7 +388,7 @@ impl<'input> Runtime<'input> {
                 Ok(eval)
             }
             Inst::Set(lhs, rhs) => match lhs {
-                Expr::None => panic!("compiler internal error (in runtime)"),
+                Expr::None | FunDefine(_) => panic!("compiler internal error (in runtime)"),
                 Expr::Var(name) => {
                     let rhs = self.exec_expr(rhs, line)?;
                     if rhs.borrow().type_ == VarType::None {
@@ -430,14 +445,25 @@ impl<'input> Runtime<'input> {
                                 }
                             }
                         }
+                        let flatten_inst = unsafe { FLATTEN_INST };
                         // TODO: performance issue here ?
-                        self.locals.last_mut().unwrap().set_fun(
-                            name,
-                            Fun {
-                                para_name,
-                                data: vec![Inst::Expr(rhs.clone())],
-                            },
-                        );
+                        if flatten_inst == 0 {
+                            self.locals.last_mut().unwrap().set_fun(
+                                name,
+                                Fun {
+                                    para_name,
+                                    data: vec![Inst::Expr(rhs.clone())],
+                                },
+                            );
+                        } else {
+                            let Expr::FunDefine(data) = rhs.clone() else {
+                                panic!("runtime internal error! (compile error)")
+                            };
+                            self.locals
+                                .last_mut()
+                                .unwrap()
+                                .set_fun(name, Fun { para_name, data });
+                        }
                         Ok(Rc::new(RefCell::new(Var::from_string(unsafe {
                             // SAFE: no multiple threads
                             if DETAIL_DEPTH == 1 {

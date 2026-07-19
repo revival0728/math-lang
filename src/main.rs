@@ -9,6 +9,8 @@ mod var;
 use clap::Parser;
 use std::thread;
 
+// TODO: fix logic function, break because of flatten
+
 fn main() {
     let args = cli::ExArgs::parse();
 
