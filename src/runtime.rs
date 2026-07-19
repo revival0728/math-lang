@@ -23,10 +23,11 @@ pub enum ExecMode {
 }
 
 #[derive(Debug, Clone)]
-pub enum ExecType<'input, 'exec> {
-    Expr(&'exec Expr<'input>),
-    Fun(Rc<Fun<'input>>),
-    Inst(&'exec Inst<'input>),
+pub enum ExecType<'exec> {
+    Expr(&'exec Expr<'exec>),
+    Fun(Rc<Fun<'exec>>),
+    Inst(&'exec Inst<'exec>),
+    CheckZero,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -42,6 +43,8 @@ pub struct Runtime<'input> {
     builtin: Scope<'input>,
     locals: Vec<Scope<'input>>,
     output: Vec<String>,
+    ast: Vec<Inst<'input>>,
+    exec: Vec<(ExecType<'input>, ExecMode, usize)>,
 }
 
 impl<'input> Scope<'input> {
@@ -173,443 +176,541 @@ impl<'input> Runtime<'input> {
 
         runtime
     }
-    pub fn execute(&mut self, source: &'input str) -> Result<&Vec<String>, GlobalError> {
+    pub fn execute<'exec>(&mut self, source: &'input str) -> Result<&Vec<String>, GlobalError>
+    where
+        'input: 'exec,
+    {
         let mut compiler = Compiler::new(source);
-        let ast = match compiler.compile() {
+        self.ast = match compiler.compile() {
             Ok(ast) => ast,
             Err(ce) => return Err(GlobalError::CE(ce)),
-        };
-        for (idx, inst) in ast.iter().enumerate() {
+        }
+        .clone();
+        let mut var_stk: Vec<Rc<RefCell<Var>>> = vec![];
+        macro_rules! push_children {
+            ($token:expr, $line:expr) => {
+                self.exec.push(($token, ExecMode::Children, $line))
+            };
+        }
+        macro_rules! push_self {
+            ($token:expr, $line:expr) => {
+                self.exec.push(($token, ExecMode::Self_, $line))
+            };
+        }
+        for (idx, inst) in self.ast.iter().enumerate() {
             let to_print = if let &Inst::Set(_, _) = inst {
                 unsafe { PRINT_SET_INST == 1 }
             } else {
                 true
             };
-            let output = match self.exec_inst(inst, idx) {
-                Ok(val) => val,
-                Err(ce) => return Err(GlobalError::RE(ce)),
-            };
+            push_children!(ExecType::Inst(inst), idx);
+            while let Some((cur_exec, mode, line)) = self.exec.pop() {
+                macro_rules! check_none {
+                    ($x:ident) => {{
+                        if $x.borrow().type_ == VarType::None {
+                            return Err(GlobalError::RE(RuntimeError {
+                                line,
+                                msg: format!("using None type for operand or argument"),
+                            }));
+                        }
+                    }};
+                    ($arg:ident $(, $args:ident),*) => {{
+                        check_none!($arg);
+                        check_none!($($args),*);
+                    }};
+                }
+                match cur_exec {
+                    ExecType::CheckZero => {
+                        let last = var_stk.pop().unwrap();
+                        check_none!(last);
+                        // check lhs is zero for logic function
+                        if last.borrow().type_ <= VarType::I64 {
+                            let lvalue: i64 = (&*last.borrow()).into();
+                            if lvalue == 0 {
+                                var_stk.pop(); // pop out lhs
+                                self.exec.pop(); // skip next inst
+                            }
+                        }
+                    }
+                    ExecType::Expr(expr) => match expr {
+                        Expr::None => panic!("compiler internal error! (in runtime)"),
+                        Expr::Inst(sub_inst) => push_children!(ExecType::Inst(&*sub_inst), line),
+                        Expr::FunCall(name, args) => {
+                            let fun = {
+                                let mut gfn = None;
+                                for scope in self.locals.iter().rev() {
+                                    if let Some(efn) = scope.get_fun(name) {
+                                        gfn = Some(efn);
+                                        break;
+                                    }
+                                }
+                                if gfn.is_none() {
+                                    gfn = self.builtin.get_fun(name);
+                                }
+                                match gfn {
+                                    Some(gfn) => gfn,
+                                    None => {
+                                        return Err(GlobalError::RE(RuntimeError {
+                                            line,
+                                            msg: format!(
+                                                "{}() is an undefined function (could be variable)",
+                                                name
+                                            ),
+                                        }));
+                                    }
+                                }
+                            };
+                            let fun_para_len = fun.para_name.len();
+                            let arg_len = args.len();
+                            let is_name_env = is_env(name);
+                            if is_name_env && arg_len > fun_para_len
+                                || !is_name_env && fun_para_len != arg_len
+                            {
+                                return Err(GlobalError::RE(RuntimeError {
+                                    line,
+                                    msg: format!(
+                                        "function {}() expect {} arguments got {}",
+                                        name,
+                                        fun.para_name.len(),
+                                        args.len()
+                                    ),
+                                }));
+                            }
+
+                            match mode {
+                                ExecMode::Children => {
+                                    push_self!(ExecType::Expr(expr), line);
+                                    for expr in args.iter() {
+                                        push_children!(ExecType::Expr(expr), line);
+                                    }
+                                }
+                                ExecMode::Self_ => {
+                                    let mut sub_local = Scope::new();
+                                    sub_local.name = name;
+                                    sub_local.stack_depth =
+                                        self.locals.last().unwrap().stack_depth + 1;
+                                    for pname in fun.para_name.iter().rev() {
+                                        let ref_var = var_stk.pop().unwrap();
+                                        sub_local.add_ref_var(pname, ref_var);
+                                    }
+                                    self.locals.push(sub_local);
+                                }
+                            }
+                            // TODO: remeber to pop Scope in ExecType::Fun
+                        }
+                        Expr::Number(data) => {
+                            let number = if let Some(evar) = self.builtin.get_var(data) {
+                                evar
+                            } else if let Some(num) = Var::new(data) {
+                                self.builtin.add_var(data, num);
+                                self.builtin.get_var(data).unwrap()
+                            } else {
+                                return Err(GlobalError::RE(RuntimeError {
+                                    line,
+                                    msg: format!(
+                                        "{} is invalid number (too large or too small)",
+                                        data
+                                    ),
+                                }));
+                            };
+                            var_stk.push(number);
+                        }
+                        Expr::Var(name) => {
+                            let mut var = None;
+                            let mut found = false;
+                            for scope in self.locals.iter_mut().rev() {
+                                if found {
+                                    break;
+                                }
+                                if let Some(evar) = scope.get_var(name) {
+                                    found = true;
+                                    var = Some(evar);
+                                }
+                            }
+                            if !found {
+                                if let Some(bvar) = self.builtin.get_var(name) {
+                                    var = Some(bvar);
+                                } else {
+                                    return Err(GlobalError::RE(RuntimeError {
+                                        line,
+                                        msg: format!("{} is undefined variable", name),
+                                    }));
+                                }
+                            }
+                            var_stk.push(var.expect("runtime internal error!"));
+                        }
+                    },
+                    ExecType::Fun(fun) => {
+                        unsafe {
+                            if self.locals.last().unwrap().stack_depth > MAX_STACK_DEPTH {
+                                let max_stack_depth = MAX_STACK_DEPTH;
+                                self.locals.last_mut().unwrap().stack_depth = 0;
+                                return Err(GlobalError::RE(RuntimeError {
+                                    line,
+                                    msg: format!("reached maximum stack depth {}", max_stack_depth),
+                                }));
+                            }
+                        }
+                        for inst in fun.data.iter() {
+                            push_children!(ExecType::Inst(inst), line);
+                        }
+                    }
+                    ExecType::Inst(inst) => {
+                        macro_rules! handle_binary {
+                            ($lhs:ident $op:tt $rhs:ident) => {{
+                                match mode {
+                                    ExecMode::Children => {
+                                        push_self!(ExecType::Inst(inst), line);
+                                        push_children!(ExecType::Expr($lhs), line);
+                                        push_children!(ExecType::Expr($rhs), line);
+                                    },
+                                    ExecMode::Self_ => {
+                                        let lhs = var_stk.pop().unwrap();
+                                        let rhs = var_stk.pop().unwrap();
+                                        check_none!(lhs, rhs);
+                                        let eval = Rc::new(RefCell::new(&*lhs.borrow() $op &*rhs.borrow()));
+                                        var_stk.push(eval);
+                                    }
+                                }
+                            }};
+                        }
+                        match inst {
+                            Inst::None => panic!("compiler internal error (in runtime)"),
+                            Inst::Expr(expr) => push_children!(ExecType::Expr(expr), line),
+                            Inst::Add(lhs, rhs) => handle_binary!(lhs + rhs),
+                            Inst::Sub(lhs, rhs) => handle_binary!(lhs - rhs),
+                            Inst::Div(lhs, rhs) => handle_binary!(lhs / rhs),
+                            Inst::Mod(lhs, rhs) => handle_binary!(lhs % rhs),
+                            Inst::Mul(lhs, rhs) => {
+                                match mode {
+                                    ExecMode::Children => {
+                                        push_self!(ExecType::Inst(inst), line);
+                                        // swap lhs, rhs process order for CheckZero
+                                        push_children!(ExecType::Expr(rhs), line);
+                                        push_children!(ExecType::Expr(lhs), line);
+                                    }
+                                    ExecMode::Self_ => {
+                                        // lhs, rhs order swapped
+                                        let rhs = var_stk.pop().unwrap();
+                                        let lhs = var_stk.pop().unwrap();
+                                        check_none!(rhs);
+                                        check_none!(lhs);
+                                        let eval =
+                                            Rc::new(RefCell::new(&*lhs.borrow() * &*rhs.borrow()));
+                                        var_stk.push(eval);
+                                    }
+                                }
+                            }
+                            Inst::Set(lhs, rhs) => match lhs {
+                                Expr::None => panic!("compiler internal error (in runtime)"),
+                                Expr::Var(name) => match mode {
+                                    ExecMode::Children => {
+                                        push_self!(ExecType::Inst(inst), line);
+                                        push_children!(ExecType::Expr(rhs), line);
+                                    }
+                                    ExecMode::Self_ => {
+                                        let rhs = var_stk.pop().unwrap();
+                                        if rhs.borrow().type_ == VarType::None {
+                                            return Err(GlobalError::RE(RuntimeError {
+                                                line,
+                                                msg: format!(
+                                                    "cannot assign None to a variable, usually caused by assigning function definition expression to a variable"
+                                                ),
+                                            }));
+                                        }
+                                        if self.builtin.has_var(name) {
+                                            return Err(GlobalError::RE(RuntimeError {
+                                                line,
+                                                msg: format!(
+                                                    "overriding builtin constant {}",
+                                                    name
+                                                ),
+                                            }));
+                                        }
+                                        let mut pushed = false;
+                                        for scope in self.locals.iter().rev() {
+                                            if let Some(var) = scope.get_var(name) {
+                                                *var.borrow_mut() = Var::clone(&rhs.borrow());
+                                                var_stk.push(var);
+                                                pushed = true;
+                                                break;
+                                            }
+                                        }
+                                        if !pushed {
+                                            self.locals
+                                                .last_mut()
+                                                .unwrap()
+                                                .add_var(name, Var::clone(&rhs.borrow()));
+                                            var_stk.push(
+                                                self.locals.last().unwrap().get_var(name).unwrap(),
+                                            )
+                                        }
+                                    }
+                                },
+                                Expr::Inst(_) => {
+                                    return Err(GlobalError::RE(RuntimeError {
+                                        line,
+                                        msg: format!("cannot assign value to an expression"),
+                                    }));
+                                }
+                                Expr::Number(_) => {
+                                    return Err(GlobalError::RE(RuntimeError {
+                                        line,
+                                        msg: format!("cannot assign value to numbers"),
+                                    }));
+                                }
+                                Expr::FunCall(name, param) => {
+                                    if self.builtin.has_fun(name) {
+                                        return Err(GlobalError::RE(RuntimeError {
+                                            line,
+                                            msg: format!("overriding builtin constant {}", name),
+                                        }));
+                                    } else {
+                                        let mut para_name = vec![];
+                                        for p in param {
+                                            match p {
+                                                Expr::None => {
+                                                    panic!("runtime internal error (in compiler)")
+                                                }
+                                                Expr::Var(pname) => para_name.push(*pname),
+                                                _ => {
+                                                    return Err(GlobalError::RE(RuntimeError {
+                                                        line,
+                                                        msg: format!(
+                                                            "function paramter only accpets variable"
+                                                        ),
+                                                    }));
+                                                }
+                                            }
+                                        }
+                                        // TODO: performance issue here ?
+                                        self.locals.last_mut().unwrap().set_fun(
+                                            name,
+                                            Fun {
+                                                para_name,
+                                                data: vec![Inst::Expr(rhs.clone())],
+                                            },
+                                        );
+                                        var_stk.push(Rc::new(RefCell::new(Var::from_string(
+                                            unsafe {
+                                                // SAFE: no multiple threads
+                                                if DETAIL_DEPTH == 1 {
+                                                    format!("<defined function {}>", name)
+                                                } else {
+                                                    format!("")
+                                                }
+                                            },
+                                        ))));
+                                    }
+                                }
+                            },
+                            Inst::Neg(expr) => match mode {
+                                ExecMode::Children => {
+                                    push_self!(ExecType::Inst(inst), line);
+                                    push_children!(ExecType::Expr(expr), line);
+                                }
+                                ExecMode::Self_ => {
+                                    let val = var_stk.pop().unwrap();
+                                    var_stk.push(Rc::new(RefCell::new(-&*val.borrow())));
+                                }
+                            },
+                            Inst::Pow(lhs, rhs) => {
+                                match mode {
+                                    ExecMode::Children => {
+                                        push_self!(ExecType::Inst(inst), line);
+                                        push_children!(ExecType::Expr(lhs), line);
+                                        push_children!(ExecType::Expr(rhs), line);
+                                    }
+                                    ExecMode::Self_ => {
+                                        let lhs = var_stk.pop().unwrap();
+                                        let rhs = var_stk.pop().unwrap();
+                                        if lhs.borrow().type_ <= VarType::I64
+                                            && rhs.borrow().type_ <= VarType::I64
+                                        {
+                                            let mut lhs = Rc::new(Var::clone(&lhs.borrow()));
+                                            let mut rhs: i64 = (&*rhs.borrow()).into();
+                                            let mut reci = false;
+                                            if rhs < 0 {
+                                                rhs = -rhs;
+                                                reci = true;
+                                            }
+                                            let mut ret = Var::from(1);
+                                            while rhs > 0 {
+                                                if rhs & 1 == 1 {
+                                                    ret = &ret * &lhs;
+                                                }
+                                                *Rc::get_mut(&mut lhs).unwrap() = &*lhs * &*lhs;
+                                                rhs >>= 1;
+                                            }
+                                            if reci {
+                                                let one = Var::new("1").unwrap();
+                                                *Rc::get_mut(&mut lhs).unwrap() = &one / &lhs;
+                                            }
+                                            var_stk.push(Rc::new(RefCell::new(ret)));
+                                        } else {
+                                            let lhs: f64 = (&*lhs.borrow()).into();
+                                            let rhs: f64 = (&*rhs.borrow()).into();
+                                            let val = lhs.powf(rhs);
+                                            var_stk.push(Rc::new(RefCell::new(Var::from(val))));
+                                        }
+                                        //TODO: add BigNum implemntation
+                                    }
+                                }
+                            }
+                            Inst::BultinFnCall(name) => {
+                                macro_rules! handle_arg_1 {
+                                    ($rust_fn:ident $(, $default_args:expr),*) => {{
+                                        let scope = self.locals.last_mut().expect("runtime internal error!");
+                                        let Some(x) = scope.get_var("x") else {
+                                            panic!("runtime internal error!")
+                                        };
+                                        check_none!(x);
+                                        if x.borrow().type_ <= VarType::F64 {
+                                            let x: f64 = (&*x.borrow()).into();
+                                            var_stk.push(Rc::new(RefCell::new(Var::from(x.$rust_fn($($default_args),*)))));
+                                        } else {
+                                            //TODO: add BigNum implemntation
+                                            todo!("add BigNum implementation")
+                                        }
+                                    }};
+                                }
+                                macro_rules! handle_integer_env_fun {
+                                    ($env_var:ident, $limit:expr) => {{
+                                        let scope = self
+                                            .locals
+                                            .last_mut()
+                                            .expect("runtime internal error!");
+                                        if let Some(x) = scope.get_var("x") {
+                                            check_none!(x);
+                                            if x.borrow().type_ >= VarType::F64 {
+                                                return Err(GlobalError::RE(RuntimeError {
+                                                    line,
+                                                    msg: format!(
+                                                        "cannot config {} with float number",
+                                                        stringify!($env_var)
+                                                    ),
+                                                }));
+                                            }
+                                            // NOTE: will break on 128 bit target?
+                                            let value: i32 = (&*x.borrow()).into();
+                                            let value: u32 = match value.try_into() {
+                                                Ok(v) => v,
+                                                Err(_) => {
+                                                    return Err(GlobalError::RE(RuntimeError {
+                                                        line,
+                                                        msg: format!(
+                                                            "cannot config {} with negative number",
+                                                            stringify!($env_var)
+                                                        ),
+                                                    }));
+                                                }
+                                            };
+                                            if value > $limit {
+                                                return Err(GlobalError::RE(RuntimeError {
+                                                    line,
+                                                    msg: format!(
+                                                        "env({}) must less than {}",
+                                                        stringify!($env_var),
+                                                        $limit
+                                                    ),
+                                                }));
+                                            }
+                                            unsafe {
+                                                $env_var = value;
+                                                var_stk.push(Rc::new(RefCell::new(Var::from(
+                                                    $env_var as i64,
+                                                ))));
+                                            }
+                                        } else {
+                                            // NOTE: will break on 128 bit target?
+                                            unsafe {
+                                                var_stk.push(Rc::new(RefCell::new(Var::from(
+                                                    $env_var as i64,
+                                                ))));
+                                            }
+                                        }
+                                    }};
+                                }
+                                macro_rules! handle_logic_fun {
+                                    (x $logic_oper:tt $stand:literal) => {{
+                                        let scope = self.locals.last_mut().expect("runtime internal error!");
+                                        let Some(x) = scope.get_var("x") else {
+                                            panic!("runtime internal error!")
+                                        };
+                                        check_none!(x);
+                                        if x.borrow().type_ > VarType::I64 {
+                                            return Err(GlobalError::RE(RuntimeError {
+                                                line,
+                                                msg: format!("logic functions only accepts integer as argument"),
+                                            }));
+                                        }
+                                        let x: i64 = (&*x.borrow()).into();
+                                        let result = (x $logic_oper $stand) as i32;
+                                        var_stk.push(Rc::new(RefCell::new(Var::from(result))));
+                                    }};
+                                }
+                                macro_rules! handle_special_fun {
+                                    ($value:expr) => {{
+                                        var_stk.push(
+                                            self.builtin.get_var(stringify!($value)).unwrap(),
+                                        );
+                                    }};
+                                }
+                                match name {
+                                    &"sin" => handle_arg_1!(sin),
+                                    &"cos" => handle_arg_1!(cos),
+                                    &"tan" => handle_arg_1!(tan),
+                                    &"asin" => handle_arg_1!(asin),
+                                    &"acos" => handle_arg_1!(acos),
+                                    &"atan" => handle_arg_1!(atan),
+                                    &"abs" => handle_arg_1!(abs),
+                                    &"sqrt" => handle_arg_1!(sqrt),
+                                    &"ceil" => handle_arg_1!(ceil),
+                                    &"floor" => handle_arg_1!(floor),
+                                    &"round" => handle_arg_1!(round),
+                                    &"exp" => handle_arg_1!(exp),
+                                    &"log" => handle_arg_1!(log10),
+                                    &"log2" => handle_arg_1!(log2),
+                                    &"ln" => handle_arg_1!(log, E),
+                                    &"trunc" => handle_arg_1!(trunc),
+                                    &"cbrt" => handle_arg_1!(cbrt),
+                                    &"__precision__" => handle_integer_env_fun!(PRECISION, 15),
+                                    &"__detail_depth__" => handle_integer_env_fun!(DETAIL_DEPTH, 1),
+                                    &"__max_stack_depth__" => {
+                                        handle_integer_env_fun!(MAX_STACK_DEPTH, u32::MAX)
+                                    }
+                                    &"__print_set_inst__" => {
+                                        handle_integer_env_fun!(PRINT_SET_INST, 1)
+                                    }
+                                    &"if" => handle_logic_fun!(x == 0),
+                                    &"else" => handle_logic_fun!(x != 0),
+                                    &"$" => handle_special_fun!(None),
+                                    &"." => handle_special_fun!(1),
+                                    &"print" => {
+                                        let scope = self
+                                            .locals
+                                            .last_mut()
+                                            .expect("runtime internal error!");
+                                        let Some(x) = scope.get_var("x") else {
+                                            panic!("runtime internal error!")
+                                        };
+                                        self.output.push(x.borrow().to_string());
+                                        var_stk.push(Rc::new(RefCell::new(Var::none())));
+                                    }
+                                    _ => panic!("runtime internal error!"),
+                                }
+                            }
+                        }
+                    }
+                };
+            }
+            let output = var_stk.pop().unwrap();
             let out_str = output.borrow().to_string();
             if to_print && !out_str.is_empty() {
                 self.output.push(out_str);
             }
         }
         Ok(&self.output)
-    }
-    fn exec_fun(
-        &mut self,
-        fun: &Fun<'input>,
-        line: usize,
-    ) -> Result<Rc<RefCell<Var>>, RuntimeError> {
-        unsafe {
-            if self.locals.last().unwrap().stack_depth > MAX_STACK_DEPTH {
-                let max_stack_depth = MAX_STACK_DEPTH;
-                self.locals.last_mut().unwrap().stack_depth = 0;
-                return Err(RuntimeError {
-                    line,
-                    msg: format!("reached maximum stack depth {}", max_stack_depth),
-                });
-            }
-        }
-        for inst in fun.data.iter() {
-            let ret = self.exec_inst(inst, line)?;
-            self.locals
-                .last_mut()
-                .unwrap()
-                .add_ref_var("__return__", ret);
-        }
-        match self.locals.last().unwrap().get_var("__return__") {
-            Some(val) => Ok(val),
-            None => panic!("runtime internal error!"),
-        }
-    }
-    fn exec_expr(
-        &mut self,
-        expr: &Expr<'input>,
-        line: usize,
-    ) -> Result<Rc<RefCell<Var>>, RuntimeError> {
-        match expr {
-            Expr::None => panic!("compiler internal error! (in runtime)"),
-            Expr::Inst(sub_inst) => self.exec_inst(sub_inst.as_ref(), line),
-            Expr::FunCall(name, args) => {
-                let fun = {
-                    let mut gfn = None;
-                    for scope in self.locals.iter().rev() {
-                        if let Some(efn) = scope.get_fun(name) {
-                            gfn = Some(efn);
-                            break;
-                        }
-                    }
-                    if gfn.is_none() {
-                        gfn = self.builtin.get_fun(name);
-                    }
-                    match gfn {
-                        Some(gfn) => gfn,
-                        None => {
-                            return Err(RuntimeError {
-                                line,
-                                msg: format!(
-                                    "{}() is an undefined function (could be variable)",
-                                    name
-                                ),
-                            });
-                        }
-                    }
-                };
-                let fun_para_len = fun.para_name.len();
-                let arg_len = args.len();
-                let is_name_env = is_env(name);
-                if is_name_env && arg_len > fun_para_len || !is_name_env && fun_para_len != arg_len
-                {
-                    return Err(RuntimeError {
-                        line,
-                        msg: format!(
-                            "function {}() expect {} arguments got {}",
-                            name,
-                            fun.para_name.len(),
-                            args.len()
-                        ),
-                    });
-                }
-
-                let mut sub_local = Scope::new();
-                sub_local.name = name;
-                sub_local.stack_depth = self.locals.last().unwrap().stack_depth + 1;
-                for (pname, expr) in fun.para_name.iter().zip(args.iter()) {
-                    let value = self.exec_expr(expr, line)?;
-                    sub_local.add_ref_var(pname, value);
-                }
-                self.locals.push(sub_local);
-                let rval = self.exec_fun(&fun, line)?;
-                self.locals.pop();
-                Ok(rval)
-            }
-            Expr::Number(data) => {
-                if let Some(evar) = self.builtin.get_var(data) {
-                    Ok(evar)
-                } else if let Some(num) = Var::new(data) {
-                    self.builtin.add_var(data, num);
-                    Ok(self.builtin.get_var(data).unwrap())
-                } else {
-                    return Err(RuntimeError {
-                        line,
-                        msg: format!("{} is invalid number (too large or too small)", data),
-                    });
-                }
-            }
-            Expr::Var(name) => {
-                let mut var = None;
-                let mut found = false;
-                for scope in self.locals.iter_mut().rev() {
-                    if found {
-                        break;
-                    }
-                    if let Some(evar) = scope.get_var(name) {
-                        found = true;
-                        var = Some(evar);
-                    }
-                }
-                if !found {
-                    if let Some(bvar) = self.builtin.get_var(name) {
-                        var = Some(bvar);
-                    } else {
-                        return Err(RuntimeError {
-                            line,
-                            msg: format!("{} is undefined variable", name),
-                        });
-                    }
-                }
-                Ok(var.expect("runtime internal error!"))
-            }
-        }
-    }
-    fn exec_inst(
-        &mut self,
-        inst: &Inst<'input>,
-        line: usize,
-    ) -> Result<Rc<RefCell<Var>>, RuntimeError> {
-        macro_rules! check_none {
-            ($x:ident) => {{
-                if $x.borrow().type_ == VarType::None {
-                    return Err(RuntimeError {
-                        line,
-                        msg: format!("using None type for operand or argument"),
-                    });
-                }
-            }};
-            ($arg:ident $(, $args:ident),*) => {{
-                check_none!($arg);
-                check_none!($($args),*);
-            }};
-        }
-        macro_rules! handle_binary {
-            ($lhs:ident $op:tt $rhs:ident) => {{
-                let lhs = self.exec_expr($lhs, line)?;
-                let rhs = self.exec_expr($rhs, line)?;
-                check_none!(lhs, rhs);
-                let eval = Rc::new(RefCell::new(&*lhs.borrow() $op &*rhs.borrow()));
-                Ok(eval)
-            }};
-        }
-        match inst {
-            Inst::None => panic!("compiler internal error (in runtime)"),
-            Inst::Expr(expr) => self.exec_expr(expr, line),
-            Inst::Add(lhs, rhs) => handle_binary!(lhs + rhs),
-            Inst::Sub(lhs, rhs) => handle_binary!(lhs - rhs),
-            Inst::Div(lhs, rhs) => handle_binary!(lhs / rhs),
-            Inst::Mod(lhs, rhs) => handle_binary!(lhs % rhs),
-            Inst::Mul(lhs, rhs) => {
-                let lhs = self.exec_expr(lhs, line)?;
-                check_none!(lhs);
-                // check lhs is zero for logic function
-                if lhs.borrow().type_ <= VarType::I64 {
-                    let lvalue: i64 = (&*lhs.borrow()).into();
-                    if lvalue == 0 {
-                        return Ok(lhs);
-                    }
-                }
-                let rhs = self.exec_expr(rhs, line)?;
-                check_none!(rhs);
-                let eval = Rc::new(RefCell::new(&*lhs.borrow() * &*rhs.borrow()));
-                Ok(eval)
-            }
-            Inst::Set(lhs, rhs) => match lhs {
-                Expr::None => panic!("compiler internal error (in runtime)"),
-                Expr::Var(name) => {
-                    let rhs = self.exec_expr(rhs, line)?;
-                    if rhs.borrow().type_ == VarType::None {
-                        return Err(RuntimeError {
-                            line,
-                            msg: format!(
-                                "cannot assign None to a variable, usually caused by assigning function definition expression to a variable"
-                            ),
-                        });
-                    }
-                    if self.builtin.has_var(name) {
-                        return Err(RuntimeError {
-                            line,
-                            msg: format!("overriding builtin constant {}", name),
-                        });
-                    }
-                    for scope in self.locals.iter().rev() {
-                        if let Some(var) = scope.get_var(name) {
-                            *var.borrow_mut() = Var::clone(&rhs.borrow());
-                            return Ok(var);
-                        }
-                    }
-                    self.locals
-                        .last_mut()
-                        .unwrap()
-                        .add_var(name, Var::clone(&rhs.borrow()));
-                    Ok(self.locals.last().unwrap().get_var(name).unwrap())
-                }
-                Expr::Inst(_) => Err(RuntimeError {
-                    line,
-                    msg: format!("cannot assign value to an expression"),
-                }),
-                Expr::Number(_) => Err(RuntimeError {
-                    line,
-                    msg: format!("cannot assign value to numbers"),
-                }),
-                Expr::FunCall(name, param) => {
-                    if self.builtin.has_fun(name) {
-                        Err(RuntimeError {
-                            line,
-                            msg: format!("overriding builtin constant {}", name),
-                        })
-                    } else {
-                        let mut para_name = vec![];
-                        for p in param {
-                            match p {
-                                Expr::None => panic!("runtime internal error (in compiler)"),
-                                Expr::Var(pname) => para_name.push(*pname),
-                                _ => {
-                                    return Err(RuntimeError {
-                                        line,
-                                        msg: format!("function paramter only accpets variable"),
-                                    });
-                                }
-                            }
-                        }
-                        // TODO: performance issue here ?
-                        self.locals.last_mut().unwrap().set_fun(
-                            name,
-                            Fun {
-                                para_name,
-                                data: vec![Inst::Expr(rhs.clone())],
-                            },
-                        );
-                        Ok(Rc::new(RefCell::new(Var::from_string(unsafe {
-                            // SAFE: no multiple threads
-                            if DETAIL_DEPTH == 1 {
-                                format!("<defined function {}>", name)
-                            } else {
-                                format!("")
-                            }
-                        }))))
-                    }
-                }
-            },
-            Inst::Neg(expr) => {
-                let val = self.exec_expr(expr, line)?;
-                Ok(Rc::new(RefCell::new(-&*val.borrow())))
-            }
-            Inst::Pow(lhs, rhs) => {
-                let lhs = self.exec_expr(lhs, line)?;
-                let rhs = self.exec_expr(rhs, line)?;
-                if lhs.borrow().type_ <= VarType::I64 && rhs.borrow().type_ <= VarType::I64 {
-                    let mut lhs = Rc::new(Var::clone(&lhs.borrow()));
-                    let mut rhs: i64 = (&*rhs.borrow()).into();
-                    let mut reci = false;
-                    if rhs < 0 {
-                        rhs = -rhs;
-                        reci = true;
-                    }
-                    let mut ret = Var::from(1);
-                    while rhs > 0 {
-                        if rhs & 1 == 1 {
-                            ret = &ret * &lhs;
-                        }
-                        *Rc::get_mut(&mut lhs).unwrap() = &*lhs * &*lhs;
-                        rhs >>= 1;
-                    }
-                    if reci {
-                        let one = Var::new("1").unwrap();
-                        *Rc::get_mut(&mut lhs).unwrap() = &one / &lhs;
-                    }
-                    Ok(Rc::new(RefCell::new(ret)))
-                } else {
-                    let lhs: f64 = (&*lhs.borrow()).into();
-                    let rhs: f64 = (&*rhs.borrow()).into();
-                    let val = lhs.powf(rhs);
-                    Ok(Rc::new(RefCell::new(Var::from(val))))
-                }
-                //TODO: add BigNum implemntation
-            }
-            Inst::BultinFnCall(name) => {
-                macro_rules! handle_arg_1 {
-                    ($rust_fn:ident $(, $default_args:expr),*) => {{
-                        let scope = self.locals.last_mut().expect("runtime internal error!");
-                        let Some(x) = scope.get_var("x") else {
-                            panic!("runtime internal error!")
-                        };
-                        check_none!(x);
-                        if x.borrow().type_ <= VarType::F64 {
-                            let x: f64 = (&*x.borrow()).into();
-                            Ok(Rc::new(RefCell::new(Var::from(x.$rust_fn($($default_args),*)))))
-                        } else {
-                            //TODO: add BigNum implemntation
-                            todo!("add BigNum implementation")
-                        }
-                    }};
-                }
-                macro_rules! handle_integer_env_fun {
-                    ($env_var:ident, $limit:expr) => {{
-                        let scope = self.locals.last_mut().expect("runtime internal error!");
-                        if let Some(x) = scope.get_var("x") {
-                            check_none!(x);
-                            if x.borrow().type_ >= VarType::F64 {
-                                return Err(RuntimeError {
-                                    line,
-                                    msg: format!(
-                                        "cannot config {} with float number",
-                                        stringify!($env_var)
-                                    ),
-                                });
-                            }
-                            // NOTE: will break on 128 bit target?
-                            let value: i32 = (&*x.borrow()).into();
-                            let value: u32 = match value.try_into() {
-                                Ok(v) => v,
-                                Err(_) => {
-                                    return Err(RuntimeError {
-                                        line,
-                                        msg: format!(
-                                            "cannot config {} with negative number",
-                                            stringify!($env_var)
-                                        ),
-                                    });
-                                }
-                            };
-                            if value > $limit {
-                                return Err(RuntimeError {
-                                    line,
-                                    msg: format!(
-                                        "env({}) must less than {}",
-                                        stringify!($env_var),
-                                        $limit
-                                    ),
-                                });
-                            }
-                            unsafe {
-                                $env_var = value;
-                                Ok(Rc::new(RefCell::new(Var::from($env_var as i64))))
-                            }
-                        } else {
-                            // NOTE: will break on 128 bit target?
-                            unsafe { Ok(Rc::new(RefCell::new(Var::from($env_var as i64)))) }
-                        }
-                    }};
-                }
-                macro_rules! handle_logic_fun {
-                    (x $logic_oper:tt $stand:literal) => {{
-                        let scope = self.locals.last_mut().expect("runtime internal error!");
-                        let Some(x) = scope.get_var("x") else {
-                            panic!("runtime internal error!")
-                        };
-                        check_none!(x);
-                        if x.borrow().type_ > VarType::I64 {
-                            return Err(RuntimeError {
-                                line,
-                                msg: format!("logic functions only accepts integer as argument"),
-                            });
-                        }
-                        let x: i64 = (&*x.borrow()).into();
-                        let result = (x $logic_oper $stand) as i32;
-                        Ok(Rc::new(RefCell::new(Var::from(result))))
-                    }};
-                }
-                macro_rules! handle_special_fun {
-                    ($value:expr) => {{ Ok(self.builtin.get_var(stringify!($value)).unwrap()) }};
-                }
-                match name {
-                    &"sin" => handle_arg_1!(sin),
-                    &"cos" => handle_arg_1!(cos),
-                    &"tan" => handle_arg_1!(tan),
-                    &"asin" => handle_arg_1!(asin),
-                    &"acos" => handle_arg_1!(acos),
-                    &"atan" => handle_arg_1!(atan),
-                    &"abs" => handle_arg_1!(abs),
-                    &"sqrt" => handle_arg_1!(sqrt),
-                    &"ceil" => handle_arg_1!(ceil),
-                    &"floor" => handle_arg_1!(floor),
-                    &"round" => handle_arg_1!(round),
-                    &"exp" => handle_arg_1!(exp),
-                    &"log" => handle_arg_1!(log10),
-                    &"log2" => handle_arg_1!(log2),
-                    &"ln" => handle_arg_1!(log, E),
-                    &"trunc" => handle_arg_1!(trunc),
-                    &"cbrt" => handle_arg_1!(cbrt),
-                    &"__precision__" => handle_integer_env_fun!(PRECISION, 15),
-                    &"__detail_depth__" => handle_integer_env_fun!(DETAIL_DEPTH, 1),
-                    &"__max_stack_depth__" => handle_integer_env_fun!(MAX_STACK_DEPTH, u32::MAX),
-                    &"__print_set_inst__" => handle_integer_env_fun!(PRINT_SET_INST, 1),
-                    &"if" => handle_logic_fun!(x == 0),
-                    &"else" => handle_logic_fun!(x != 0),
-                    &"$" => handle_special_fun!(None),
-                    &"." => handle_special_fun!(1),
-                    &"print" => {
-                        let scope = self.locals.last_mut().expect("runtime internal error!");
-                        let Some(x) = scope.get_var("x") else {
-                            panic!("runtime internal error!")
-                        };
-                        self.output.push(x.borrow().to_string());
-                        Ok(Rc::new(RefCell::new(Var::none())))
-                    }
-                    _ => panic!("runtime internal error!"),
-                }
-            }
-        }
     }
 }
 
