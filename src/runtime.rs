@@ -3,6 +3,7 @@ use crate::env::*;
 use crate::error::{GlobalError, RuntimeError};
 use crate::var::{Var, VarType};
 use std::cell::RefCell;
+use std::cmp::Ordering::{self, Greater};
 use std::collections::HashMap;
 use std::convert::Into;
 use std::rc::Rc;
@@ -142,6 +143,7 @@ impl<'input> Runtime<'input> {
         // logic functions
         add_builtin_fn! { if(x) }
         add_builtin_fn! { else(x) }
+        add_builtin_fn! { sign(x) }
         // special functions
         runtime.builtin.set_fun(
             "$",
@@ -602,6 +604,20 @@ impl<'input> Runtime<'input> {
                     &"__print_set_inst__" => handle_integer_env_fun!(PRINT_SET_INST, 1),
                     &"if" => handle_logic_fun!(x == 0),
                     &"else" => handle_logic_fun!(x != 0),
+                    &"sign" => {
+                        let scope = self.locals.last_mut().expect("runtime internal error!");
+                        let Some(x) = scope.get_var("x") else {
+                            panic!("runtime internal error!")
+                        };
+                        check_none!(x);
+                        let x: f64 = (&*x.borrow()).into();
+                        let result = match x.total_cmp(&0.0) {
+                            Ordering::Equal => 0,
+                            Ordering::Greater => 1,
+                            Ordering::Less => -1,
+                        };
+                        Ok(Rc::new(RefCell::new(Var::from(result))))
+                    }
                     &"$" => handle_special_fun!(None),
                     &"." => handle_special_fun!(1),
                     &"print" => {

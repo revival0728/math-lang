@@ -133,6 +133,7 @@ use char `#` to comment something, check out example [here](/examples/formattive
 |------|----------|
 | if(x) | return `x == 0`  where `x` must be an integer |
 | else(x) | return `x != 0` where `x` must be an integer |
+| sign(x) | return `1` if `x > 0`, `0` if `x == 0`, `-1` if `x < 0`, using Rust [`f64::total_cmp`](https://doc.rust-lang.org/stable/std/primitive.f64.html#method.total_cmp) to compare |
 
 - it works because runtime will check `lhs == 0`, if true then will not calcuate `rhs`
 
@@ -197,14 +198,13 @@ it is possible to read or get ENV by function `__[ENV_name]__()`, where `[ENV_na
 - store stack depth in Scope instead of runtime
 - support string literal
 - change default MAX_STACK_DEPTH to 1024
+- added `sign()` logic function
 
 ### Optimizations
 - preallocate memory of stack scopes
 
 ### TODO
-- [ ] Change version of Cargo.toml
 - [ ] implement BigNum, fix i64 and f64 overflow problem (rarely happened)
 - [ ] improve error message
-- [ ] add more logic function
 - [ ] maybe array?
 - [ ] fix tail call optimization to recursion
