@@ -3,6 +3,7 @@ use crate::env::*;
 use crate::error::{GlobalError, RuntimeError};
 use crate::var::{Var, VarType};
 use std::cell::RefCell;
+use std::cmp::Ordering::{self, Greater};
 use std::collections::HashMap;
 use std::convert::Into;
 use std::rc::Rc;
@@ -19,6 +20,7 @@ pub struct Fun<'input> {
 #[derive(Debug, Default, Clone)]
 pub struct Scope<'input> {
     name: &'input str,
+    stack_depth: u32,
     var_table: HashMap<&'input str, Rc<RefCell<Var>>>,
     fun_table: HashMap<&'input str, Rc<RefCell<Fun<'input>>>>,
 }
@@ -28,7 +30,7 @@ pub struct Runtime<'input> {
     builtin: Scope<'input>,
     locals: Vec<Scope<'input>>,
     output: Vec<String>,
-    stack_depth: u32,
+    out_buffer: String,
 }
 
 impl<'input> Scope<'input> {
@@ -78,6 +80,10 @@ impl<'input> Runtime<'input> {
     pub fn new() -> Self {
         let mut runtime = Self::default();
 
+        // pre allocate locals
+        runtime.locals = Vec::with_capacity(unsafe { MAX_STACK_DEPTH + 1 } as usize);
+
+        runtime.builtin.name = "__builtin__";
         // add builtin constant
         runtime.builtin.add_var("pi", Var::from(PI));
         runtime.builtin.add_var("e", Var::from(E));
@@ -108,8 +114,9 @@ impl<'input> Runtime<'input> {
                 )
             };
         }
-        // IO functions
+        // output functions
         add_builtin_fn! { print(x) };
+        add_builtin_fn! { println(x) };
         // math functions
         add_builtin_fn! { sin(x) };
         add_builtin_fn! { cos(x) };
@@ -136,6 +143,7 @@ impl<'input> Runtime<'input> {
         // logic functions
         add_builtin_fn! { if(x) }
         add_builtin_fn! { else(x) }
+        add_builtin_fn! { sign(x) }
         // special functions
         runtime.builtin.set_fun(
             "$",
@@ -155,6 +163,7 @@ impl<'input> Runtime<'input> {
         // add global scope
         let mut global = Scope::default();
         global.name = "__global__";
+        global.stack_depth = 0;
         runtime.locals.push(global);
 
         runtime
@@ -180,6 +189,11 @@ impl<'input> Runtime<'input> {
                 self.output.push(out_str);
             }
         }
+        if !self.out_buffer.is_empty() {
+            let output = self.out_buffer.drain(..).collect();
+            self.output.push(output);
+            self.out_buffer.clear();
+        }
         Ok(&self.output)
     }
     fn exec_fun(
@@ -187,11 +201,10 @@ impl<'input> Runtime<'input> {
         fun: &Fun<'input>,
         line: usize,
     ) -> Result<Rc<RefCell<Var>>, RuntimeError> {
-        self.stack_depth += 1;
         unsafe {
-            if self.stack_depth >= MAX_STACK_DEPTH {
+            if self.locals.last().unwrap().stack_depth > MAX_STACK_DEPTH {
                 let max_stack_depth = MAX_STACK_DEPTH;
-                self.stack_depth = 0;
+                self.locals.last_mut().unwrap().stack_depth = 0;
                 return Err(RuntimeError {
                     line,
                     msg: format!("reached maximum stack depth {}", max_stack_depth),
@@ -205,9 +218,7 @@ impl<'input> Runtime<'input> {
                 .unwrap()
                 .add_ref_var("__return__", ret);
         }
-        self.stack_depth -= 1;
-        let ret = self.locals.last().unwrap().get_var("__return__");
-        match ret {
+        match self.locals.last().unwrap().get_var("__return__") {
             Some(val) => Ok(val),
             None => panic!("runtime internal error!"),
         }
@@ -263,6 +274,7 @@ impl<'input> Runtime<'input> {
 
                 let mut sub_local = Scope::new();
                 sub_local.name = name;
+                sub_local.stack_depth = self.locals.last().unwrap().stack_depth + 1;
                 for (pname, expr) in fun.borrow().para_name.iter().zip(args.iter()) {
                     let value = self.exec_expr(expr, line)?;
                     sub_local.add_ref_var(pname, value);
@@ -271,26 +283,6 @@ impl<'input> Runtime<'input> {
                 let rval = self.exec_fun(&fun.borrow(), line)?;
                 self.locals.pop();
                 Ok(rval)
-                // if &self.locals.last().unwrap().name == name {
-                //     // Tail Call Optimization
-                //     for (pname, expr) in fun.borrow().para_name.iter().zip(args.iter()) {
-                //         let value = self.exec_expr(expr, line)?;
-                //         self.locals.last_mut().unwrap().add_ref_var(pname, value);
-                //     }
-                //     let rval = self.exec_fun(&fun.borrow(), line)?;
-                //     Ok(rval)
-                // } else {
-                //     let mut sub_local = Scope::new();
-                //     sub_local.name = name;
-                //     for (pname, expr) in fun.borrow().para_name.iter().zip(args.iter()) {
-                //         let value = self.exec_expr(expr, line)?;
-                //         sub_local.add_ref_var(pname, value);
-                //     }
-                //     self.locals.push(sub_local);
-                //     let rval = self.exec_fun(&fun.borrow(), line)?;
-                //     self.locals.pop();
-                //     Ok(rval)
-                // }
             }
             Expr::Number(data) => {
                 if let Some(evar) = self.builtin.get_var(data) {
@@ -328,6 +320,10 @@ impl<'input> Runtime<'input> {
                     }
                 }
                 Ok(var.expect("runtime internal error!"))
+            }
+            Expr::String(str) => {
+                let var = Var::from_string(str.to_string());
+                Ok(Rc::new(RefCell::new(var)))
             }
         }
     }
@@ -426,7 +422,6 @@ impl<'input> Runtime<'input> {
                             msg: format!("overriding builtin constant {}", name),
                         })
                     } else {
-                        // TODO: add custom functions
                         let mut para_name = vec![];
                         for p in param {
                             match p {
@@ -458,6 +453,10 @@ impl<'input> Runtime<'input> {
                         }))))
                     }
                 }
+                Expr::String(_) => Err(RuntimeError {
+                    line,
+                    msg: format!("cannot assign value to string literal"),
+                }),
             },
             Inst::Neg(expr) => {
                 let val = self.exec_expr(expr, line)?;
@@ -474,7 +473,7 @@ impl<'input> Runtime<'input> {
                         rhs = -rhs;
                         reci = true;
                     }
-                    let mut ret = Var::new("1").unwrap();
+                    let mut ret = Var::from(1);
                     while rhs > 0 {
                         if rhs & 1 == 1 {
                             ret = &ret * &lhs;
@@ -605,6 +604,20 @@ impl<'input> Runtime<'input> {
                     &"__print_set_inst__" => handle_integer_env_fun!(PRINT_SET_INST, 1),
                     &"if" => handle_logic_fun!(x == 0),
                     &"else" => handle_logic_fun!(x != 0),
+                    &"sign" => {
+                        let scope = self.locals.last_mut().expect("runtime internal error!");
+                        let Some(x) = scope.get_var("x") else {
+                            panic!("runtime internal error!")
+                        };
+                        check_none!(x);
+                        let x: f64 = (&*x.borrow()).into();
+                        let result = match x.total_cmp(&0.0) {
+                            Ordering::Equal => 0,
+                            Ordering::Greater => 1,
+                            Ordering::Less => -1,
+                        };
+                        Ok(Rc::new(RefCell::new(Var::from(result))))
+                    }
                     &"$" => handle_special_fun!(None),
                     &"." => handle_special_fun!(1),
                     &"print" => {
@@ -612,7 +625,18 @@ impl<'input> Runtime<'input> {
                         let Some(x) = scope.get_var("x") else {
                             panic!("runtime internal error!")
                         };
-                        self.output.push(x.borrow().to_string());
+                        self.out_buffer.push_str(&x.borrow().to_string());
+                        Ok(Rc::new(RefCell::new(Var::none())))
+                    }
+                    &"println" => {
+                        let scope = self.locals.last_mut().expect("runtime internal error!");
+                        let Some(x) = scope.get_var("x") else {
+                            panic!("runtime internal error!")
+                        };
+                        self.out_buffer.push_str(&x.borrow().to_string());
+                        let output = self.out_buffer.drain(..).collect();
+                        self.output.push(output);
+                        self.out_buffer.clear();
                         Ok(Rc::new(RefCell::new(Var::none())))
                     }
                     _ => panic!("runtime internal error!"),
@@ -737,6 +761,31 @@ mod test {
         let mut runtime = Runtime::new();
         let output = runtime.execute(&source).unwrap();
         let correct = vec!["1", "1", "2", "3", "5", "55"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect::<Vec<String>>();
+        assert_eq!(output, &correct);
+    }
+
+    #[test]
+    fn bug_1() {
+        let mut runtime = Runtime::new();
+        runtime.execute("()()").unwrap();
+        let output = &runtime.output;
+        let correct = vec!["0"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect::<Vec<String>>();
+        assert_eq!(output, &correct);
+    }
+
+    #[test]
+    fn bug_2() {
+        let mut runtime = Runtime::new();
+        runtime.execute("sum(a, b) = a + b").unwrap();
+        runtime.execute("sin(sum(1, -1))").unwrap();
+        let output = &runtime.output;
+        let correct = vec!["0.0000000"]
             .iter()
             .map(|s| s.to_string())
             .collect::<Vec<String>>();

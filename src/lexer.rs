@@ -17,6 +17,7 @@ pub enum Token<'input> {
     Newline,
     Var(&'input str),
     Number(&'input str),
+    String(&'input str),
 
     // special tokens
     NegSign,
@@ -26,6 +27,7 @@ pub enum Token<'input> {
 #[derive(Debug, Default, Clone)]
 pub struct LexerState {
     in_comment: bool,
+    in_string: bool,
 }
 
 lexer! {
@@ -35,6 +37,7 @@ lexer! {
     let whitespace = [' ' '\t'];
     let newline = '\n' | "\r\n";
     let special_fun = "$" | ".";
+    let str_paren = '"';
 
     rule Init {
         $whitespace,
@@ -73,6 +76,11 @@ lexer! {
             lexer.state().in_comment = true;
             lexer.switch(LexerRule::Comment)
         },
+
+        $str_paren => |lexer| {
+            lexer.state().in_string = true;
+            lexer.switch(LexerRule::String)
+        },
     }
 
     rule Comment {
@@ -82,12 +90,34 @@ lexer! {
         },
         _ => |lexer| lexer.continue_(),
     }
+
+    rule String {
+        $str_paren => |lexer| {
+            lexer.state().in_string = true;
+            let match_ = lexer.match_();
+            lexer.switch_and_return(LexerRule::Init, Token::String(&match_[1..match_.len()-1]))
+        },
+        _ => |lexer| lexer.continue_(),
+    },
 }
 
 #[cfg(test)]
 mod test {
     use crate::lexer::{Lexer, Token};
     use crate::test::examples;
+
+    #[test]
+    fn string() {
+        let lexer = Lexer::new("print(\"hello, world!\")");
+        let tokens: Vec<Token> = lexer.into_iter().map(|e| e.unwrap().1).collect();
+        let correct: Vec<Token> = vec![
+            Token::Var("print"),
+            Token::LParen,
+            Token::String("hello, world!"),
+            Token::RParen,
+        ];
+        assert_eq!(tokens, correct);
+    }
 
     #[test]
     fn comment() {

@@ -7,6 +7,7 @@ pub enum Expr<'input> {
     #[default]
     None,
     Number(&'input str),
+    String(&'input str),
     Var(&'input str),
     FunCall(&'input str, Vec<Expr<'input>>),
     Inst(Box<Inst<'input>>),
@@ -320,7 +321,8 @@ impl<'input> Compiler<'input> {
                     | Token::Mod
                     | Token::Eq
                     | Token::Var(_)
-                    | Token::Number(_) => push_token!(token),
+                    | Token::Number(_)
+                    | Token::String(_) => push_token!(token),
                     Token::None | Token::Newline => panic!("compiler internal error!"),
                 }
             } else if self.state.in_funcall > 0 {
@@ -368,7 +370,8 @@ impl<'input> Compiler<'input> {
                     | Token::Mod
                     | Token::Eq
                     | Token::Var(_)
-                    | Token::Number(_) => push_token!(token),
+                    | Token::Number(_)
+                    | Token::String(_) => push_token!(token),
                     Token::None | Token::Newline => panic!("compiler internal error!"),
                 }
             } else {
@@ -401,6 +404,7 @@ impl<'input> Compiler<'input> {
                     | Token::Eq => self.oper_tk.push((lloc, token)),
                     Token::Var(name) => self.idnt_tk.push((lloc, Expr::Var(name))),
                     Token::Number(data) => self.idnt_tk.push((lloc, Expr::Number(data))),
+                    Token::String(str) => self.idnt_tk.push((lloc, Expr::String(str))),
                     Token::None | Token::Newline => panic!("compiler internal error!"),
                 };
             }

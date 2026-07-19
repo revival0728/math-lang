@@ -13,7 +13,7 @@ fn main() {
     let args = cli::ExArgs::parse();
 
     let builder = thread::Builder::new()
-        .name("reductor".into())
+        .name("runtime".into())
         .stack_size(args.max_stack_size.unwrap_or(64 * 1024 * 1024));
 
     let cli = builder

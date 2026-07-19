@@ -2,6 +2,8 @@
 # .() = 1
 
 $(
+    .(M = 1000000007)
+    .(N = 500)
     .(a1 = 1)
     .(a2 = 1)
     .(a3 = 0)
@@ -9,13 +11,18 @@ $(
         .(loop(i, n) = (
             .(if(i - n)())
             .(else(i - n)(
-                .(a3 = a1 + a2)
+                .(a3 = a1 + a2 mod M)
                 .(a1 = a2)
                 .(a2 = a3)
                 .(loop(i + 1, n))
             ))
         ))
-        .(loop(0, 3))
+        .(loop(0, N))
     )
+    .(print("fib("))
+    .(print(N))
+    .(print(") = "))
     .(print(a1))
+    .(print(" mod "))
+    .(print(M))
 )
