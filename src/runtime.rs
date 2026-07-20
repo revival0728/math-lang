@@ -3,7 +3,7 @@ use crate::env::*;
 use crate::error::{GlobalError, RuntimeError};
 use crate::var::{Var, VarType};
 use std::cell::RefCell;
-use std::cmp::Ordering::{self, Greater};
+use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::convert::Into;
 use std::rc::Rc;
@@ -21,6 +21,7 @@ pub struct Fun<'input> {
 pub struct Scope<'input> {
     name: &'input str,
     stack_depth: u32,
+    heap: Vec<Rc<RefCell<Var>>>,
     var_table: HashMap<&'input str, Rc<RefCell<Var>>>,
     fun_table: HashMap<&'input str, Rc<RefCell<Fun<'input>>>>,
 }
@@ -61,6 +62,19 @@ impl<'input> Scope<'input> {
     }
     pub fn add_ref_var(&mut self, name: &'input str, ref_var: Rc<RefCell<Var>>) {
         self.var_table.insert(name, ref_var);
+    }
+    pub fn get_heap(&self, index: usize) -> Rc<RefCell<Var>> {
+        Rc::clone(&self.heap[index])
+    }
+    pub fn add_arr(&mut self, len: usize) -> (usize, usize) {
+        // return [start, end)
+        let mem: Vec<Rc<RefCell<Var>>> = (0..len)
+            .map(|_| Rc::new(RefCell::new(Var::from(0))))
+            .collect();
+        let start = self.heap.len();
+        let end = start + len;
+        self.heap.extend(mem.into_iter());
+        (start, end)
     }
 }
 
@@ -144,6 +158,8 @@ impl<'input> Runtime<'input> {
         add_builtin_fn! { if(x) }
         add_builtin_fn! { else(x) }
         add_builtin_fn! { sign(x) }
+        // init functions
+        add_builtin_fn! { Array(len) }
         // special functions
         runtime.builtin.set_fun(
             "$",
@@ -346,11 +362,26 @@ impl<'input> Runtime<'input> {
                 check_none!($($args),*);
             }};
         }
+        macro_rules! check_is_num {
+            ($x:ident) => {{
+                if !$x.borrow().is_num() {
+                    return Err(RuntimeError {
+                        line,
+                        msg: format!("variable or expression is not number, cannot be an operand or a argument of math functions"),
+                    });
+                }
+            }};
+            ($arg:ident $(, $args:ident),*) => {{
+                check_is_num!($arg);
+                check_is_num!($($args),*);
+            }};
+        }
         macro_rules! handle_binary {
             ($lhs:ident $op:tt $rhs:ident) => {{
                 let lhs = self.exec_expr($lhs, line)?;
                 let rhs = self.exec_expr($rhs, line)?;
                 check_none!(lhs, rhs);
+                check_is_num!(lhs, rhs);
                 let eval = Rc::new(RefCell::new(&*lhs.borrow() $op &*rhs.borrow()));
                 Ok(eval)
             }};
@@ -365,6 +396,7 @@ impl<'input> Runtime<'input> {
             Inst::Mul(lhs, rhs) => {
                 let lhs = self.exec_expr(lhs, line)?;
                 check_none!(lhs);
+                check_is_num!(lhs);
                 // check lhs is zero for logic function
                 if lhs.borrow().type_ <= VarType::I64 {
                     let lvalue: i64 = (&*lhs.borrow()).into();
@@ -374,8 +406,54 @@ impl<'input> Runtime<'input> {
                 }
                 let rhs = self.exec_expr(rhs, line)?;
                 check_none!(rhs);
+                check_is_num!(rhs);
                 let eval = Rc::new(RefCell::new(&*lhs.borrow() * &*rhs.borrow()));
                 Ok(eval)
+            }
+            Inst::Idx(lhs, rhs) => {
+                let lhs = self.exec_expr(lhs, line)?;
+                let rhs = self.exec_expr(rhs, line)?;
+                check_none!(lhs, rhs);
+                let scope_id = (&*lhs.borrow()).get_scope_id();
+                let (start, end) = (&*lhs.borrow()).get_boundary();
+                if rhs.borrow().type_ >= VarType::F64 {
+                    return Err(RuntimeError {
+                        line,
+                        msg: format!("only integers can be used for indexing"),
+                    });
+                }
+                let start = start as i64;
+                let end = end as i64;
+                let index: i64 = (&*rhs.borrow()).into();
+                let index = if index >= 0 {
+                    start + index
+                } else {
+                    end + index
+                };
+                if index < 0 || index >= end {
+                    return Err(RuntimeError {
+                        line,
+                        msg: format!(
+                            "array index out of range, length is {} but got index {}",
+                            end - start,
+                            index - start
+                        ),
+                    });
+                }
+                let index: usize = match index.try_into() {
+                    Ok(index) => index,
+                    Err(_) => {
+                        return Err(RuntimeError {
+                            line,
+                            msg: format!(
+                                "cannot index using type {} due to computer architecture",
+                                rhs.borrow().type_
+                            ),
+                        });
+                    }
+                };
+                let val = self.locals[scope_id].get_heap(index);
+                Ok(val)
             }
             Inst::Set(lhs, rhs) => match lhs {
                 Expr::None => panic!("compiler internal error (in runtime)"),
@@ -407,10 +485,21 @@ impl<'input> Runtime<'input> {
                         .add_var(name, Var::clone(&rhs.borrow()));
                     Ok(self.locals.last().unwrap().get_var(name).unwrap())
                 }
-                Expr::Inst(_) => Err(RuntimeError {
-                    line,
-                    msg: format!("cannot assign value to an expression"),
-                }),
+                Expr::Inst(_) => {
+                    let rhs = self.exec_expr(rhs, line)?;
+                    if rhs.borrow().type_ == VarType::None {
+                        return Err(RuntimeError {
+                            line,
+                            msg: format!(
+                                "cannot assign None to a variable, usually caused by assigning function definition expression to a variable"
+                            ),
+                        });
+                    }
+                    let lhs = self.exec_expr(lhs, line)?;
+                    let val = Var::clone(&rhs.borrow());
+                    *lhs.borrow_mut() = val;
+                    Ok(lhs)
+                }
                 Expr::Number(_) => Err(RuntimeError {
                     line,
                     msg: format!("cannot assign value to numbers"),
@@ -460,11 +549,15 @@ impl<'input> Runtime<'input> {
             },
             Inst::Neg(expr) => {
                 let val = self.exec_expr(expr, line)?;
+                check_none!(val);
+                check_is_num!(val);
                 Ok(Rc::new(RefCell::new(-&*val.borrow())))
             }
             Inst::Pow(lhs, rhs) => {
                 let lhs = self.exec_expr(lhs, line)?;
                 let rhs = self.exec_expr(rhs, line)?;
+                check_none!(lhs, rhs);
+                check_is_num!(lhs, rhs);
                 if lhs.borrow().type_ <= VarType::I64 && rhs.borrow().type_ <= VarType::I64 {
                     let mut lhs = Rc::new(Var::clone(&lhs.borrow()));
                     let mut rhs: i64 = (&*rhs.borrow()).into();
@@ -502,6 +595,7 @@ impl<'input> Runtime<'input> {
                             panic!("runtime internal error!")
                         };
                         check_none!(x);
+                        check_is_num!(x);
                         if x.borrow().type_ <= VarType::F64 {
                             let x: f64 = (&*x.borrow()).into();
                             Ok(Rc::new(RefCell::new(Var::from(x.$rust_fn($($default_args),*)))))
@@ -516,6 +610,7 @@ impl<'input> Runtime<'input> {
                         let scope = self.locals.last_mut().expect("runtime internal error!");
                         if let Some(x) = scope.get_var("x") {
                             check_none!(x);
+                            check_is_num!(x);
                             if x.borrow().type_ >= VarType::F64 {
                                 return Err(RuntimeError {
                                     line,
@@ -566,6 +661,7 @@ impl<'input> Runtime<'input> {
                             panic!("runtime internal error!")
                         };
                         check_none!(x);
+                        check_is_num!(x);
                         if x.borrow().type_ > VarType::I64 {
                             return Err(RuntimeError {
                                 line,
@@ -639,6 +735,40 @@ impl<'input> Runtime<'input> {
                         self.out_buffer.clear();
                         Ok(Rc::new(RefCell::new(Var::none())))
                     }
+                    &"Array" => {
+                        let scope = self.locals.last_mut().expect("runtime internal error!");
+                        let Some(len) = scope.get_var("len") else {
+                            panic!("runtime internal error!")
+                        };
+                        check_none!(len);
+                        let len_type = len.borrow().type_;
+                        if len_type >= VarType::F64 {
+                            return Err(RuntimeError {
+                                line,
+                                msg: format!(
+                                    "cannot init an array with type {}, only accept integer",
+                                    len_type
+                                ),
+                            });
+                        }
+                        let len: i64 = (&*len.borrow()).into();
+                        let len: usize = match len.try_into() {
+                            Ok(len) => len,
+                            Err(_) => {
+                                return Err(RuntimeError {
+                                    line,
+                                    msg: format!(
+                                        "cannot index using type {} due to computer architecture",
+                                        len_type
+                                    ),
+                                });
+                            }
+                        };
+                        let prv_local = self.locals.len() - 2;
+                        let ptr = self.locals[prv_local].add_arr(len);
+                        let arr = Var::new_array(ptr, prv_local);
+                        Ok(Rc::new(RefCell::new(arr)))
+                    }
                     _ => panic!("runtime internal error!"),
                 }
             }
@@ -650,6 +780,24 @@ impl<'input> Runtime<'input> {
 mod test {
     use super::Runtime;
     use crate::test::{examples, simple_expr};
+
+    #[test]
+    fn array() {
+        let source = examples::array();
+        let mut runtime = Runtime::new();
+        let output = runtime.execute(&source).unwrap();
+        let correct = vec![
+            "<Array of Scope 0 at 0x0:0x3>",
+            "0",
+            "1",
+            "1",
+            "fib(10) = 55",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect::<Vec<String>>();
+        assert_eq!(output, &correct);
+    }
 
     #[test]
     fn inst_mod_1() {

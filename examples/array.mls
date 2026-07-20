@@ -1,0 +1,25 @@
+# init array with length of 5
+arr = Array(3)
+
+# init array values
+arr:0 = 0
+arr:-2 = 1   # same as "arr:1 = 1"
+arr:-1 = 1   # same as "arr:2 = 1"
+
+# do algorithm
+$(
+    .(loop(i, n) = (
+        .(if(i - n)())
+        .(else(i - n)(
+            .(arr:2 = arr:0 + arr:1)
+            .(arr:0 = arr:1)
+            .(arr:1 = arr:2)
+            .(loop(i + 1, n))
+        ))
+    ))
+    .(loop(0, 10))
+)
+
+# print answer
+print("fib(10) = ")
+println(arr:0)
