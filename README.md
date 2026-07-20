@@ -212,6 +212,7 @@ it is possible to read or get ENV by function `__[ENV_name]__()`, where `[ENV_na
 ### Fixed Bugs
 - crashed while use None as operand of power operation
 - inline comment broke newline
+- negative sign affected expressions inside parens
 
 ### TODO
 - [ ] Change Cargo.toml version

@@ -475,6 +475,12 @@ impl<'input> Compiler<'input> {
                             "expected identifier or expression",
                         ));
                     };
+                    if self.state.expr_depth == 0 {
+                        self.state.expr_depth += 1;
+                        let inst = Box::new(Inst::Neg(idnt));
+                        self.idnt_tk.push((lloc, Expr::Inst(inst)));
+                        continue;
+                    }
                     if let Expr::Inst(inst) = idnt {
                         let mut cur_inst = Inst::Neg(Expr::None);
                         let mut inst = *inst;
@@ -625,7 +631,7 @@ mod test {
         let ast = compiler.compile().unwrap();
         let correct = vec![Inst::Neg(expr_inst!(Inst::Pow(
             Expr::Var("a"),
-            Expr::Var("10")
+            Expr::Number("10")
         )))];
         assert_eq!(ast, &correct);
     }
