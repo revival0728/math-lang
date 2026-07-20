@@ -51,7 +51,7 @@ Options:
 rnum = [raw-number] | [scientific-notation]
 vars = [user-defined-variable] | [builtin-constants]
 idnt = [vars] | [rnum]
-b_op = [+][-][*][/][^][=][mod]
+b_op = [+][-][*][/][^][=][mod][:]
 s_op = [-]
 expr = [idnt] |
        [fun-call] |
@@ -76,10 +76,11 @@ you should never use variable name with format `__[name]__`, it is used by ENV, 
 ## About Operator
 ### Precedence
 ```
-(s_op)(-) > (^) > (/) = (*) > (b_op)(-) = (+) > (mod) > (=)
+(s_op)(-) > (:) > (^) > (/) = (*) > (b_op)(-) = (+) > (mod) > (=)
 ```
 
 ### Notice
+- `:`: is for indexing an array
 - `mod`: calculates euclid remainder, which is `r` and `0 <= r < abs(rhs)`
 - `*`: auto insertion bewteen
   - number and variable
@@ -91,7 +92,7 @@ you should never use variable name with format `__[name]__`, it is used by ENV, 
 types are automatically determined, depends on precision and size of value
 
 ```
-BigNum > f64 > i64 > i32
+Array | BigNum > f64 > i64 > i32
 ```
 
 where `f64`, `i64`, `i32` are Rust primitve types, `BigNum` is used only when precision or size of value is required
@@ -102,6 +103,12 @@ where `f64`, `i64`, `i32` are Rust primitve types, `BigNum` is used only when pr
 currently values are limited by Rust primitive type `f64`, will change after implementing `BigNum`
 
 which is in [-1.7976931348623157e+308, 1.7976931348623157e+308]
+
+### About Array
+- init an array with function `Array(len)`
+- indexing an array with operator `:`
+
+checkout the [example](/examples/array.mls)
 
 ## About Comment
 use char `#` to comment something, check out example [here](/examples/formattive.mls)
@@ -148,6 +155,10 @@ use char `#` to comment something, check out example [here](/examples/formattive
 - source in REPL is single line
 - source in file is entire file
 
+### Init Functions
+| name | document |
+|------|----------|
+| Array(len) | return an array of length `len` |
 
 ### Math Functions
 
@@ -195,13 +206,13 @@ it is possible to read or get ENV by function `__[ENV_name]__()`, where `[ENV_na
 
 ## Development
 ### Main Changes
-- store stack depth in Scope instead of runtime
-- support string literal
-- change default MAX_STACK_DEPTH to 1024
-- added `sign()` logic function
+- allow assigning value to an expression
+- added Array support
 
-### Optimizations
-- preallocate memory of stack scopes
+### Fixed Bugs
+- crashed while use None as operand of power operation
+- inline comment broke newline
+- negative sign affected expressions inside parens
 
 ### TODO
 - [ ] implement BigNum, fix i64 and f64 overflow problem (rarely happened)

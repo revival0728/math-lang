@@ -10,6 +10,7 @@ pub enum Token<'input> {
     Star,
     Slash,
     Mod,
+    Colon,
     Eq,
     LParen,
     RParen,
@@ -52,6 +53,7 @@ lexer! {
         ")" = Token::RParen,
         "," = Token::Comma,
         "mod" = Token::Mod,
+        ":" = Token::Colon,
         $newline = Token::Newline,
 
         $special_fun => |lexer| {
@@ -86,7 +88,7 @@ lexer! {
     rule Comment {
         $newline => |lexer| {
             lexer.state().in_comment = false;
-            lexer.switch_and_return(LexerRule::Init, Token::None)
+            lexer.switch_and_return(LexerRule::Init, Token::Newline)
         },
         _ => |lexer| lexer.continue_(),
     }
@@ -124,8 +126,8 @@ mod test {
         let lexer = Lexer::new("#testing comment\n#comment2\na = 1");
         let tokens: Vec<Token> = lexer.into_iter().map(|e| e.unwrap().1).collect();
         let correct: Vec<Token> = vec![
-            Token::None,
-            Token::None,
+            Token::Newline,
+            Token::Newline,
             Token::Var("a"),
             Token::Eq,
             Token::Number("1"),

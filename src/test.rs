@@ -17,10 +17,22 @@ pub mod examples {
     pub fn fib() -> String {
         get("fib.mls")
     }
+    pub fn array() -> String {
+        get("array.mls")
+    }
 }
 
 #[cfg(test)]
 pub mod simple_expr {
+    pub fn neg_idx() -> &'static str {
+        "-a:1^10"
+    }
+    pub fn neg_expr_1() -> &'static str {
+        "-a^10"
+    }
+    pub fn neg_expr_2() -> &'static str {
+        "-(a^10)"
+    }
     pub fn expr_1() -> &'static str {
         "i = i + 1"
     }
