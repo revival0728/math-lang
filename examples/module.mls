@@ -1,0 +1,7 @@
+import("lib/greet.mls")
+
+greet("world")
+greet(daisuki)
+greet(name_seq:0)
+greet(name_seq:1)
+greet(name_seq)

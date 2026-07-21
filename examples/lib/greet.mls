@@ -1,0 +1,11 @@
+daisuki = "Chisato"
+
+name_seq = Sequence(2)
+name_seq:0 = "Bob"
+name_seq:1 = "Alice"
+
+greet(name) = $(
+    .(print("hello, "))
+    .(print(name))
+    .(println("!"))
+)

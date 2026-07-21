@@ -17,8 +17,11 @@ pub mod examples {
     pub fn fib() -> String {
         get("fib.mls")
     }
-    pub fn array() -> String {
-        get("array.mls")
+    pub fn sequence() -> String {
+        get("sequence.mls")
+    }
+    pub fn module() -> String {
+        get("module.mls")
     }
 }
 

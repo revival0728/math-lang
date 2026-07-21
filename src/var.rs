@@ -13,7 +13,7 @@ pub enum VarType {
     I64,
     F64,
     BigNum,
-    Array,
+    Sequence,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -33,7 +33,7 @@ impl Display for VarType {
                 Self::I64 => "I64",
                 Self::F64 => "F64",
                 Self::BigNum => "BigNum",
-                Self::Array => "Array",
+                Self::Sequence => "Sequence",
             }
         )
     }
@@ -119,51 +119,55 @@ impl Into<f64> for &Var {
             VarType::I32 => i32::from_le_bytes(self.data[0..4].try_into().unwrap()).into(),
             VarType::I64 => i64::from_le_bytes(self.data[0..8].try_into().unwrap()) as f64,
             VarType::F64 => f64::from_le_bytes(self.data[0..8].try_into().unwrap()).into(),
-            VarType::Array => panic!("runtime internal error!"),
+            VarType::Sequence => panic!("runtime internal error!"),
         }
     }
 }
 
-// for array
+// for sequence
 impl Var {
-    pub fn new_array(ptr: (usize, usize), scope_id: usize) -> Self {
+    pub fn new_sequence(ptr: (usize, usize), scope: (usize, usize)) -> Self {
         let start = ptr.0.to_le_bytes();
         let end = ptr.1.to_le_bytes();
-        let scope_id = scope_id.to_le_bytes();
+        let scope_index = scope.0.to_le_bytes();
+        let scope_id = scope.1.to_le_bytes();
         let mut data = Vec::new();
         data.extend_from_slice(&start);
         data.extend_from_slice(&end);
+        data.extend_from_slice(&scope_index);
         data.extend_from_slice(&scope_id);
         Self {
-            type_: VarType::Array,
+            type_: VarType::Sequence,
             data,
         }
     }
     pub fn is_num(&self) -> bool {
         match self.type_ {
             VarType::None => panic!("runtime internal error!"),
-            VarType::Array => false,
+            VarType::Sequence => false,
             VarType::I32 | VarType::I64 | VarType::F64 | VarType::BigNum => true,
         }
     }
-    pub fn get_scope_id(&self) -> usize {
-        let info: ((usize, usize), usize) = self.into();
+    pub fn get_scope(&self) -> (usize, usize) {
+        let info: ((usize, usize), (usize, usize)) = self.into();
         info.1
     }
     pub fn get_boundary(&self) -> (usize, usize) {
-        let info: ((usize, usize), usize) = self.into();
+        let info: ((usize, usize), (usize, usize)) = self.into();
         info.0
     }
 }
 
-impl Into<((usize, usize), usize)> for &Var {
-    fn into(self) -> ((usize, usize), usize) {
+impl Into<((usize, usize), (usize, usize))> for &Var {
+    fn into(self) -> ((usize, usize), (usize, usize)) {
         const UB: usize = (usize::BITS >> 3) as usize;
         let start = usize::from_le_bytes(self.data[0..UB].try_into().unwrap());
         let end = usize::from_le_bytes(self.data[UB..(UB << 1)].try_into().unwrap());
+        let scope_index =
+            usize::from_le_bytes(self.data[(UB << 1)..((UB << 1) + UB)].try_into().unwrap());
         let scope_id =
-            usize::from_le_bytes(self.data[(UB << 1)..(UB + UB + UB)].try_into().unwrap());
-        ((start, end), scope_id)
+            usize::from_le_bytes(self.data[((UB << 1) + UB)..(UB << 2)].try_into().unwrap());
+        ((start, end), (scope_index, scope_id))
     }
 }
 
@@ -188,7 +192,7 @@ macro_rules! impl_operation_for_var {
                     }};
                 }
                 match std::cmp::max(VarType::$min_type, std::cmp::max(self.type_, rhs.type_)) {
-                    VarType::None | VarType::BigNum | VarType::Array => panic!("runtime internal error!"),
+                    VarType::None | VarType::BigNum | VarType::Sequence => panic!("runtime internal error!"),
                     VarType::I32 => impl_integer!(i32, i64),
                     VarType::I64 => impl_integer!(i64, f64),
                     VarType::F64 => {
@@ -234,7 +238,7 @@ impl Neg for &Var {
             VarType::I64 => impl_for_integer!(i64, f64),
             VarType::F64 => impl_for_float!(f64),
             VarType::BigNum => panic!("missing BigNum implementation"),
-            VarType::Array => panic!("runtime internal error!"),
+            VarType::Sequence => panic!("runtime internal error!"),
         }
     }
 }
@@ -268,12 +272,16 @@ impl Display for Var {
                     write!(f, "{:.p$}", v)
                 }
             }
-            VarType::Array => {
-                let ((start, end), scope_id): ((usize, usize), usize) = self.into();
+            VarType::Sequence => {
+                let (start, end) = self.get_boundary();
+                let (_scope_index, scope_id) = self.get_scope();
+                // FIXME: break on 128bit?
                 write!(
                     f,
-                    "<Array of Scope {} at {:#x}:{:#x}>",
-                    scope_id, start, end
+                    "<Sequence of Scope {} with length {} at {:#018x}>",
+                    scope_id,
+                    end - start,
+                    start
                 )
             }
         }
@@ -285,11 +293,11 @@ mod test {
     use crate::var::Var;
 
     #[test]
-    fn array() {
-        let arr = Var::new_array((1, 5), 8);
-        let info: ((usize, usize), usize) = (&arr).into();
-        assert_eq!(info, ((1, 5), 8));
+    fn sequence() {
+        let arr = Var::new_sequence((1, 5), (8, 9));
+        let info: ((usize, usize), (usize, usize)) = (&arr).into();
+        assert_eq!(info, ((1, 5), (8, 9)));
         assert_eq!(arr.get_boundary(), (1, 5));
-        assert_eq!(arr.get_scope_id(), 8);
+        assert_eq!(arr.get_scope(), (8, 9));
     }
 }

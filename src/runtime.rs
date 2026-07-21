@@ -6,6 +6,7 @@ use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::convert::Into;
+use std::path::PathBuf;
 use std::rc::Rc;
 
 const PI: f64 = std::f64::consts::PI;
@@ -19,6 +20,7 @@ pub struct Fun<'input> {
 
 #[derive(Debug, Default, Clone)]
 pub struct Scope<'input> {
+    id: usize,
     name: &'input str,
     stack_depth: u32,
     heap: Vec<Rc<RefCell<Var>>>,
@@ -31,12 +33,18 @@ pub struct Runtime<'input> {
     builtin: Scope<'input>,
     locals: Vec<Scope<'input>>,
     output: Vec<String>,
+    work_path: PathBuf,
+    module: HashMap<&'input str, &'input str>,
     out_buffer: String,
+    max_scope_id: usize,
 }
 
 impl<'input> Scope<'input> {
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new(name: &'input str, id: usize) -> Self {
+        let mut new = Self::default();
+        new.name = name;
+        new.id = id;
+        new
     }
     pub fn get_var(&self, name: &'input str) -> Option<Rc<RefCell<Var>>> {
         self.var_table.get(name).cloned()
@@ -62,6 +70,9 @@ impl<'input> Scope<'input> {
     }
     pub fn add_ref_var(&mut self, name: &'input str, ref_var: Rc<RefCell<Var>>) {
         self.var_table.insert(name, ref_var);
+    }
+    pub fn add_ref_fun(&mut self, name: &'input str, ref_fun: Rc<RefCell<Fun<'input>>>) {
+        self.fun_table.insert(name, ref_fun);
     }
     pub fn get_heap(&self, index: usize) -> Rc<RefCell<Var>> {
         Rc::clone(&self.heap[index])
@@ -154,12 +165,15 @@ impl<'input> Runtime<'input> {
         add_builtin_fn! { __detail_depth__(x) }
         add_builtin_fn! { __max_stack_depth__(x) }
         add_builtin_fn! { __print_set_inst__(x) }
+        add_builtin_fn! { __index_base__(x) }
         // logic functions
         add_builtin_fn! { if(x) }
         add_builtin_fn! { else(x) }
         add_builtin_fn! { sign(x) }
         // init functions
-        add_builtin_fn! { Array(len) }
+        add_builtin_fn! { Sequence(len) }
+        // module relative functions
+        add_builtin_fn! { import(__module__) }
         // special functions
         runtime.builtin.set_fun(
             "$",
@@ -177,12 +191,14 @@ impl<'input> Runtime<'input> {
         );
 
         // add global scope
-        let mut global = Scope::default();
-        global.name = "__global__";
+        let mut global = Scope::new("__global__", runtime.next_scope_id());
         global.stack_depth = 0;
         runtime.locals.push(global);
 
         runtime
+    }
+    pub fn set_work_path(&mut self, path: PathBuf) {
+        self.work_path = path;
     }
     pub fn execute(&mut self, source: &'input str) -> Result<&Vec<String>, GlobalError> {
         let mut compiler = Compiler::new(source);
@@ -198,7 +214,12 @@ impl<'input> Runtime<'input> {
             };
             let output = match self.exec_inst(inst, idx) {
                 Ok(val) => val,
-                Err(ce) => return Err(GlobalError::RE(ce)),
+                Err(ce) => {
+                    while self.locals.last().unwrap().name != "__global__" {
+                        self.locals.pop();
+                    }
+                    return Err(GlobalError::RE(ce));
+                }
             };
             let out_str = output.borrow().to_string();
             if to_print && !out_str.is_empty() {
@@ -238,6 +259,11 @@ impl<'input> Runtime<'input> {
             Some(val) => Ok(val),
             None => panic!("runtime internal error!"),
         }
+    }
+    fn next_scope_id(&mut self) -> usize {
+        let id = self.max_scope_id;
+        self.max_scope_id += 1;
+        id
     }
     fn exec_expr(
         &mut self,
@@ -288,8 +314,7 @@ impl<'input> Runtime<'input> {
                     });
                 }
 
-                let mut sub_local = Scope::new();
-                sub_local.name = name;
+                let mut sub_local = Scope::new(name, self.next_scope_id());
                 sub_local.stack_depth = self.locals.last().unwrap().stack_depth + 1;
                 for (pname, expr) in fun.borrow().para_name.iter().zip(args.iter()) {
                     let value = self.exec_expr(expr, line)?;
@@ -412,10 +437,18 @@ impl<'input> Runtime<'input> {
             }
             Inst::Idx(lhs, rhs) => {
                 let lhs = self.exec_expr(lhs, line)?;
+                check_none!(lhs);
+                if lhs.borrow().type_ != VarType::Sequence {
+                    return Err(RuntimeError {
+                        line,
+                        msg: format!("only a sequence can be indexed"),
+                    });
+                }
                 let rhs = self.exec_expr(rhs, line)?;
-                check_none!(lhs, rhs);
-                let scope_id = (&*lhs.borrow()).get_scope_id();
-                let (start, end) = (&*lhs.borrow()).get_boundary();
+                check_none!(rhs);
+                check_is_num!(rhs);
+                let (scope_index, scope_id) = lhs.borrow().get_scope();
+                let (start, end) = lhs.borrow().get_boundary();
                 if rhs.borrow().type_ >= VarType::F64 {
                     return Err(RuntimeError {
                         line,
@@ -425,8 +458,9 @@ impl<'input> Runtime<'input> {
                 let start = start as i64;
                 let end = end as i64;
                 let index: i64 = (&*rhs.borrow()).into();
+                let index_base = unsafe { INDEX_BASE } as i64;
                 let index = if index >= 0 {
-                    start + index
+                    start + index - index_base
                 } else {
                     end + index
                 };
@@ -434,9 +468,10 @@ impl<'input> Runtime<'input> {
                     return Err(RuntimeError {
                         line,
                         msg: format!(
-                            "array index out of range, length is {} but got index {}",
+                            "sequence index out of range, length is {} but got index {} ({}-base)",
                             end - start,
-                            index - start
+                            index - start + index_base,
+                            index_base
                         ),
                     });
                 }
@@ -452,21 +487,37 @@ impl<'input> Runtime<'input> {
                         });
                     }
                 };
-                let val = self.locals[scope_id].get_heap(index);
+                let val = match self.locals.get(scope_index) {
+                    Some(scope) => {
+                        if scope.id != scope_id {
+                            return Err(RuntimeError {
+                                line,
+                                msg: format!("sequence data out of scope before indexing"),
+                            });
+                        }
+                        scope.get_heap(index)
+                    }
+                    None => {
+                        return Err(RuntimeError {
+                            line,
+                            msg: format!("sequence data out of scope before indexing"),
+                        });
+                    }
+                };
                 Ok(val)
             }
             Inst::Set(lhs, rhs) => match lhs {
                 Expr::None => panic!("compiler internal error (in runtime)"),
                 Expr::Var(name) => {
                     let rhs = self.exec_expr(rhs, line)?;
-                    if rhs.borrow().type_ == VarType::None {
-                        return Err(RuntimeError {
-                            line,
-                            msg: format!(
-                                "cannot assign None to a variable, usually caused by assigning function definition expression to a variable"
-                            ),
-                        });
-                    }
+                    // if rhs.borrow().type_ == VarType::None {
+                    //     return Err(RuntimeError {
+                    //         line,
+                    //         msg: format!(
+                    //             "cannot assign None to a variable, usually caused by assigning function definition expression to a variable"
+                    //         ),
+                    //     });
+                    // }
                     if self.builtin.has_var(name) {
                         return Err(RuntimeError {
                             line,
@@ -487,14 +538,14 @@ impl<'input> Runtime<'input> {
                 }
                 Expr::Inst(_) => {
                     let rhs = self.exec_expr(rhs, line)?;
-                    if rhs.borrow().type_ == VarType::None {
-                        return Err(RuntimeError {
-                            line,
-                            msg: format!(
-                                "cannot assign None to a variable, usually caused by assigning function definition expression to a variable"
-                            ),
-                        });
-                    }
+                    // if rhs.borrow().type_ == VarType::None {
+                    //     return Err(RuntimeError {
+                    //         line,
+                    //         msg: format!(
+                    //             "cannot assign None to a variable, usually caused by assigning function definition expression to a variable"
+                    //         ),
+                    //     });
+                    // }
                     let lhs = self.exec_expr(lhs, line)?;
                     let val = Var::clone(&rhs.borrow());
                     *lhs.borrow_mut() = val;
@@ -508,7 +559,7 @@ impl<'input> Runtime<'input> {
                     if self.builtin.has_fun(name) {
                         Err(RuntimeError {
                             line,
-                            msg: format!("overriding builtin constant {}", name),
+                            msg: format!("overriding builtin function {}", name),
                         })
                     } else {
                         let mut para_name = vec![];
@@ -698,6 +749,7 @@ impl<'input> Runtime<'input> {
                     &"__detail_depth__" => handle_integer_env_fun!(DETAIL_DEPTH, 1),
                     &"__max_stack_depth__" => handle_integer_env_fun!(MAX_STACK_DEPTH, u32::MAX),
                     &"__print_set_inst__" => handle_integer_env_fun!(PRINT_SET_INST, 1),
+                    &"__index_base__" => handle_integer_env_fun!(INDEX_BASE, 1),
                     &"if" => handle_logic_fun!(x == 0),
                     &"else" => handle_logic_fun!(x != 0),
                     &"sign" => {
@@ -721,7 +773,11 @@ impl<'input> Runtime<'input> {
                         let Some(x) = scope.get_var("x") else {
                             panic!("runtime internal error!")
                         };
-                        self.out_buffer.push_str(&x.borrow().to_string());
+                        let out = match x.borrow().type_ {
+                            VarType::Sequence => self.sequence_to_string(Rc::clone(&x), line)?,
+                            _ => x.borrow().to_string(),
+                        };
+                        self.out_buffer.push_str(&out);
                         Ok(Rc::new(RefCell::new(Var::none())))
                     }
                     &"println" => {
@@ -729,13 +785,17 @@ impl<'input> Runtime<'input> {
                         let Some(x) = scope.get_var("x") else {
                             panic!("runtime internal error!")
                         };
-                        self.out_buffer.push_str(&x.borrow().to_string());
+                        let out = match x.borrow().type_ {
+                            VarType::Sequence => self.sequence_to_string(Rc::clone(&x), line)?,
+                            _ => x.borrow().to_string(),
+                        };
+                        self.out_buffer.push_str(&out);
                         let output = self.out_buffer.drain(..).collect();
                         self.output.push(output);
                         self.out_buffer.clear();
                         Ok(Rc::new(RefCell::new(Var::none())))
                     }
-                    &"Array" => {
+                    &"Sequence" => {
                         let scope = self.locals.last_mut().expect("runtime internal error!");
                         let Some(len) = scope.get_var("len") else {
                             panic!("runtime internal error!")
@@ -746,7 +806,7 @@ impl<'input> Runtime<'input> {
                             return Err(RuntimeError {
                                 line,
                                 msg: format!(
-                                    "cannot init an array with type {}, only accept integer",
+                                    "cannot init an sequence with type {}, only accept integer",
                                     len_type
                                 ),
                             });
@@ -766,13 +826,163 @@ impl<'input> Runtime<'input> {
                         };
                         let prv_local = self.locals.len() - 2;
                         let ptr = self.locals[prv_local].add_arr(len);
-                        let arr = Var::new_array(ptr, prv_local);
+                        let prv_local_id = self.locals[prv_local].id;
+                        let arr = Var::new_sequence(ptr, (prv_local, prv_local_id));
                         Ok(Rc::new(RefCell::new(arr)))
+                    }
+                    &"import" => {
+                        let scope = self.locals.last_mut().expect("runtime internal error!");
+                        let Some(module) = scope.get_var("__module__") else {
+                            panic!("runtime internal error!")
+                        };
+                        if module.borrow().type_ != VarType::None {
+                            return Err(RuntimeError {
+                                line,
+                                msg: format!(
+                                    "import() function only accpets literal string but got type {}",
+                                    module.borrow().type_
+                                ),
+                            });
+                        }
+                        let path_str = module.borrow().to_string();
+                        if path_str.is_empty() {
+                            return Err(RuntimeError {
+                                line,
+                                msg: format!(
+                                    "import() function only accpets literal string but got None",
+                                ),
+                            });
+                        }
+                        let mut path = std::path::PathBuf::new();
+                        path = path.join(self.work_path.clone());
+                        for sub_path in path_str.split('/') {
+                            path = path.join(sub_path);
+                        }
+                        let source = match std::fs::read_to_string(path) {
+                            Ok(s) => s,
+                            Err(_) => {
+                                return Err(RuntimeError {
+                                    line,
+                                    msg: format!("module {} does not exist", path_str),
+                                });
+                            }
+                        };
+                        let mod_name = path_str.leak();
+                        if self.module.contains_key(mod_name) {
+                            return Ok(Rc::new(RefCell::new(Var::none())));
+                        }
+                        let source = source.leak();
+                        self.module.insert(mod_name, source);
+                        let last_output = self.output.len();
+                        match self.execute(source) {
+                            Ok(_) => {
+                                // do actual import
+                                let split_index = self.locals.len() - 1;
+                                let prv_scope_index = self.locals.len() - 2;
+                                let (prv_scope, mod_scope) = self.locals.split_at_mut(split_index);
+                                let prv_scope = prv_scope.last_mut().unwrap();
+                                let mod_scope = mod_scope.last_mut().unwrap();
+                                // do variable
+                                for (var_name, var_value) in mod_scope.var_table.iter() {
+                                    if var_name == &"__module__" {
+                                        continue;
+                                    }
+                                    // FIXME: check will not work, module overwite value while executing
+                                    if prv_scope.has_var(var_name) {
+                                        return Err(RuntimeError {
+                                            line,
+                                            msg: format!(
+                                                "duplicate variable {} in module {}",
+                                                var_name, mod_name
+                                            ),
+                                        });
+                                    }
+                                    let var_type = var_value.borrow().type_;
+                                    match var_type {
+                                        VarType::Sequence => {
+                                            // find heap location for module sequence
+                                            let (start, end) = var_value.borrow().get_boundary();
+                                            let ptr = prv_scope.add_arr(end - start);
+                                            // copy heap data
+                                            for (pi, mi) in (start..end).zip(ptr.0..ptr.1) {
+                                                prv_scope.heap[pi] = Rc::clone(&mod_scope.heap[mi]);
+                                            }
+                                            let prv_scope_id = prv_scope.id;
+                                            *var_value.borrow_mut() = Var::new_sequence(
+                                                ptr,
+                                                (prv_scope_index, prv_scope_id),
+                                            );
+                                            prv_scope.add_ref_var(var_name, Rc::clone(var_value));
+                                        }
+                                        _ => {
+                                            prv_scope.add_ref_var(var_name, Rc::clone(var_value));
+                                        }
+                                    }
+                                }
+                                // do function
+                                for (fun_name, fun_value) in mod_scope.fun_table.iter() {
+                                    if prv_scope.has_fun(fun_name) {
+                                        return Err(RuntimeError {
+                                            line,
+                                            msg: format!(
+                                                "duplicate function {} in module {}",
+                                                fun_name, mod_name
+                                            ),
+                                        });
+                                    }
+                                    prv_scope.add_ref_fun(fun_name, Rc::clone(fun_value));
+                                }
+                                // clear module output
+                                self.output.drain(last_output..);
+                                Ok(Rc::new(RefCell::new(Var::from_string(unsafe {
+                                    // SAFE: no multiple threads
+                                    if DETAIL_DEPTH == 1 {
+                                        format!("<import module {}>", name)
+                                    } else {
+                                        format!("")
+                                    }
+                                }))))
+                            }
+                            Err(err) => Err(RuntimeError {
+                                line,
+                                msg: format!("\n\tImport Error:\n\t\t{}", err.no_loc_info()),
+                            }),
+                        }
                     }
                     _ => panic!("runtime internal error!"),
                 }
             }
         }
+    }
+    fn sequence_to_string(
+        &mut self,
+        seq: Rc<RefCell<Var>>,
+        line: usize,
+    ) -> Result<String, RuntimeError> {
+        let (scope_index, scope_id) = seq.borrow().get_scope();
+        let (start, end) = seq.borrow().get_boundary();
+        let ele: Result<Vec<String>, RuntimeError> = (start..end)
+            .map(|i| match self.locals.get(scope_index) {
+                Some(scope) => Ok({
+                    if scope.id != scope_id {
+                        return Err(RuntimeError {
+                            line,
+                            msg: format!("sequence data out of scope before indexing"),
+                        });
+                    }
+                    let e = scope.get_heap(i);
+                    match e.borrow().type_ {
+                        VarType::Sequence => self.sequence_to_string(Rc::clone(&e), line)?,
+                        _ => e.borrow().to_string(),
+                    }
+                }),
+                None => Err(RuntimeError {
+                    line,
+                    msg: format!("sequence data out of scope before indexing"),
+                }),
+            })
+            .collect();
+        Ok(format!("[{}]", ele?.join(", ")))
     }
 }
 
@@ -782,12 +992,49 @@ mod test {
     use crate::test::{examples, simple_expr};
 
     #[test]
-    fn array() {
-        let source = examples::array();
+    fn module() {
+        let source = examples::module();
+        let mut runtime = Runtime::new();
+        runtime.work_path = std::path::PathBuf::new().join("examples");
+        let output = runtime.execute(&source).unwrap();
+        let correct = vec![
+            "hello, world!",
+            "hello, Chisato!",
+            "hello, Bob!",
+            "hello, Alice!",
+            "hello, [Bob, Alice]!",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect::<Vec<String>>();
+        assert_eq!(output, &correct);
+    }
+
+    #[test]
+    fn print_sequence() {
+        let mut runtime = Runtime::new();
+        runtime.execute("seq = Sequence(3)").unwrap();
+        runtime.execute("seq:0 = Sequence(3)").unwrap();
+        runtime.execute("print(seq)").unwrap();
+        let output = &runtime.output;
+        let correct = vec![
+            "<Sequence of Scope 0 with length 3 at 0x0000000000000000>",
+            "<Sequence of Scope 0 with length 3 at 0x0000000000000003>",
+            "[[0, 0, 0], 0, 0]",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect::<Vec<String>>();
+        assert_eq!(output, &correct);
+    }
+
+    #[test]
+    fn sequence() {
+        let source = examples::sequence();
         let mut runtime = Runtime::new();
         let output = runtime.execute(&source).unwrap();
         let correct = vec![
-            "<Array of Scope 0 at 0x0:0x3>",
+            "<Sequence of Scope 0 with length 3 at 0x0000000000000000>",
             "0",
             "1",
             "1",
