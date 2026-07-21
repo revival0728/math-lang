@@ -6,6 +6,7 @@ use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::convert::Into;
+use std::path::PathBuf;
 use std::rc::Rc;
 
 const PI: f64 = std::f64::consts::PI;
@@ -32,6 +33,8 @@ pub struct Runtime<'input> {
     builtin: Scope<'input>,
     locals: Vec<Scope<'input>>,
     output: Vec<String>,
+    work_path: PathBuf,
+    module: HashMap<&'input str, &'input str>,
     out_buffer: String,
     max_scope_id: usize,
 }
@@ -67,6 +70,9 @@ impl<'input> Scope<'input> {
     }
     pub fn add_ref_var(&mut self, name: &'input str, ref_var: Rc<RefCell<Var>>) {
         self.var_table.insert(name, ref_var);
+    }
+    pub fn add_ref_fun(&mut self, name: &'input str, ref_fun: Rc<RefCell<Fun<'input>>>) {
+        self.fun_table.insert(name, ref_fun);
     }
     pub fn get_heap(&self, index: usize) -> Rc<RefCell<Var>> {
         Rc::clone(&self.heap[index])
@@ -166,6 +172,8 @@ impl<'input> Runtime<'input> {
         add_builtin_fn! { sign(x) }
         // init functions
         add_builtin_fn! { Sequence(len) }
+        // module relative functions
+        add_builtin_fn! { import(__module__) }
         // special functions
         runtime.builtin.set_fun(
             "$",
@@ -189,10 +197,8 @@ impl<'input> Runtime<'input> {
 
         runtime
     }
-    fn next_scope_id(&mut self) -> usize {
-        let id = self.max_scope_id;
-        self.max_scope_id += 1;
-        id
+    pub fn set_work_path(&mut self, path: PathBuf) {
+        self.work_path = path;
     }
     pub fn execute(&mut self, source: &'input str) -> Result<&Vec<String>, GlobalError> {
         let mut compiler = Compiler::new(source);
@@ -208,7 +214,12 @@ impl<'input> Runtime<'input> {
             };
             let output = match self.exec_inst(inst, idx) {
                 Ok(val) => val,
-                Err(ce) => return Err(GlobalError::RE(ce)),
+                Err(ce) => {
+                    while self.locals.last().unwrap().name != "__global__" {
+                        self.locals.pop();
+                    }
+                    return Err(GlobalError::RE(ce));
+                }
             };
             let out_str = output.borrow().to_string();
             if to_print && !out_str.is_empty() {
@@ -248,6 +259,11 @@ impl<'input> Runtime<'input> {
             Some(val) => Ok(val),
             None => panic!("runtime internal error!"),
         }
+    }
+    fn next_scope_id(&mut self) -> usize {
+        let id = self.max_scope_id;
+        self.max_scope_id += 1;
+        id
     }
     fn exec_expr(
         &mut self,
@@ -421,6 +437,7 @@ impl<'input> Runtime<'input> {
             }
             Inst::Idx(lhs, rhs) => {
                 let lhs = self.exec_expr(lhs, line)?;
+                check_none!(lhs);
                 if lhs.borrow().type_ != VarType::Sequence {
                     return Err(RuntimeError {
                         line,
@@ -428,7 +445,8 @@ impl<'input> Runtime<'input> {
                     });
                 }
                 let rhs = self.exec_expr(rhs, line)?;
-                check_none!(lhs, rhs);
+                check_none!(rhs);
+                check_is_num!(rhs);
                 let (scope_index, scope_id) = lhs.borrow().get_scope();
                 let (start, end) = lhs.borrow().get_boundary();
                 if rhs.borrow().type_ >= VarType::F64 {
@@ -492,14 +510,14 @@ impl<'input> Runtime<'input> {
                 Expr::None => panic!("compiler internal error (in runtime)"),
                 Expr::Var(name) => {
                     let rhs = self.exec_expr(rhs, line)?;
-                    if rhs.borrow().type_ == VarType::None {
-                        return Err(RuntimeError {
-                            line,
-                            msg: format!(
-                                "cannot assign None to a variable, usually caused by assigning function definition expression to a variable"
-                            ),
-                        });
-                    }
+                    // if rhs.borrow().type_ == VarType::None {
+                    //     return Err(RuntimeError {
+                    //         line,
+                    //         msg: format!(
+                    //             "cannot assign None to a variable, usually caused by assigning function definition expression to a variable"
+                    //         ),
+                    //     });
+                    // }
                     if self.builtin.has_var(name) {
                         return Err(RuntimeError {
                             line,
@@ -520,14 +538,14 @@ impl<'input> Runtime<'input> {
                 }
                 Expr::Inst(_) => {
                     let rhs = self.exec_expr(rhs, line)?;
-                    if rhs.borrow().type_ == VarType::None {
-                        return Err(RuntimeError {
-                            line,
-                            msg: format!(
-                                "cannot assign None to a variable, usually caused by assigning function definition expression to a variable"
-                            ),
-                        });
-                    }
+                    // if rhs.borrow().type_ == VarType::None {
+                    //     return Err(RuntimeError {
+                    //         line,
+                    //         msg: format!(
+                    //             "cannot assign None to a variable, usually caused by assigning function definition expression to a variable"
+                    //         ),
+                    //     });
+                    // }
                     let lhs = self.exec_expr(lhs, line)?;
                     let val = Var::clone(&rhs.borrow());
                     *lhs.borrow_mut() = val;
@@ -541,7 +559,7 @@ impl<'input> Runtime<'input> {
                     if self.builtin.has_fun(name) {
                         Err(RuntimeError {
                             line,
-                            msg: format!("overriding builtin constant {}", name),
+                            msg: format!("overriding builtin function {}", name),
                         })
                     } else {
                         let mut para_name = vec![];
@@ -812,6 +830,125 @@ impl<'input> Runtime<'input> {
                         let arr = Var::new_sequence(ptr, (prv_local, prv_local_id));
                         Ok(Rc::new(RefCell::new(arr)))
                     }
+                    &"import" => {
+                        let scope = self.locals.last_mut().expect("runtime internal error!");
+                        let Some(module) = scope.get_var("__module__") else {
+                            panic!("runtime internal error!")
+                        };
+                        if module.borrow().type_ != VarType::None {
+                            return Err(RuntimeError {
+                                line,
+                                msg: format!(
+                                    "import() function only accpets literal string but got type {}",
+                                    module.borrow().type_
+                                ),
+                            });
+                        }
+                        let path_str = module.borrow().to_string();
+                        if path_str.is_empty() {
+                            return Err(RuntimeError {
+                                line,
+                                msg: format!(
+                                    "import() function only accpets literal string but got None",
+                                ),
+                            });
+                        }
+                        let mut path = std::path::PathBuf::new();
+                        path = path.join(self.work_path.clone());
+                        for sub_path in path_str.split('/') {
+                            path = path.join(sub_path);
+                        }
+                        let source = match std::fs::read_to_string(path) {
+                            Ok(s) => s,
+                            Err(_) => {
+                                return Err(RuntimeError {
+                                    line,
+                                    msg: format!("module {} does not exist", path_str),
+                                });
+                            }
+                        };
+                        let mod_name = path_str.leak();
+                        if self.module.contains_key(mod_name) {
+                            return Ok(Rc::new(RefCell::new(Var::none())));
+                        }
+                        let source = source.leak();
+                        self.module.insert(mod_name, source);
+                        let last_output = self.output.len();
+                        match self.execute(source) {
+                            Ok(_) => {
+                                // do actual import
+                                let split_index = self.locals.len() - 1;
+                                let prv_scope_index = self.locals.len() - 2;
+                                let (prv_scope, mod_scope) = self.locals.split_at_mut(split_index);
+                                let prv_scope = prv_scope.last_mut().unwrap();
+                                let mod_scope = mod_scope.last_mut().unwrap();
+                                // do variable
+                                for (var_name, var_value) in mod_scope.var_table.iter() {
+                                    if var_name == &"__module__" {
+                                        continue;
+                                    }
+                                    // FIXME: check will not work, module overwite value while executing
+                                    if prv_scope.has_var(var_name) {
+                                        return Err(RuntimeError {
+                                            line,
+                                            msg: format!(
+                                                "duplicate variable {} in module {}",
+                                                var_name, mod_name
+                                            ),
+                                        });
+                                    }
+                                    let var_type = var_value.borrow().type_;
+                                    match var_type {
+                                        VarType::Sequence => {
+                                            // find heap location for module sequence
+                                            let (start, end) = var_value.borrow().get_boundary();
+                                            let ptr = prv_scope.add_arr(end - start);
+                                            // copy heap data
+                                            for (pi, mi) in (start..end).zip(ptr.0..ptr.1) {
+                                                prv_scope.heap[pi] = Rc::clone(&mod_scope.heap[mi]);
+                                            }
+                                            let prv_scope_id = prv_scope.id;
+                                            *var_value.borrow_mut() = Var::new_sequence(
+                                                ptr,
+                                                (prv_scope_index, prv_scope_id),
+                                            );
+                                            prv_scope.add_ref_var(var_name, Rc::clone(var_value));
+                                        }
+                                        _ => {
+                                            prv_scope.add_ref_var(var_name, Rc::clone(var_value));
+                                        }
+                                    }
+                                }
+                                // do function
+                                for (fun_name, fun_value) in mod_scope.fun_table.iter() {
+                                    if prv_scope.has_fun(fun_name) {
+                                        return Err(RuntimeError {
+                                            line,
+                                            msg: format!(
+                                                "duplicate function {} in module {}",
+                                                fun_name, mod_name
+                                            ),
+                                        });
+                                    }
+                                    prv_scope.add_ref_fun(fun_name, Rc::clone(fun_value));
+                                }
+                                // clear module output
+                                self.output.drain(last_output..);
+                                Ok(Rc::new(RefCell::new(Var::from_string(unsafe {
+                                    // SAFE: no multiple threads
+                                    if DETAIL_DEPTH == 1 {
+                                        format!("<import module {}>", name)
+                                    } else {
+                                        format!("")
+                                    }
+                                }))))
+                            }
+                            Err(err) => Err(RuntimeError {
+                                line,
+                                msg: format!("\n\tImport Error:\n\t\t{}", err.no_loc_info()),
+                            }),
+                        }
+                    }
                     _ => panic!("runtime internal error!"),
                 }
             }
@@ -853,6 +990,25 @@ impl<'input> Runtime<'input> {
 mod test {
     use super::Runtime;
     use crate::test::{examples, simple_expr};
+
+    #[test]
+    fn module() {
+        let source = examples::module();
+        let mut runtime = Runtime::new();
+        runtime.work_path = std::path::PathBuf::new().join("examples");
+        let output = runtime.execute(&source).unwrap();
+        let correct = vec![
+            "hello, world!",
+            "hello, Chisato!",
+            "hello, Bob!",
+            "hello, Alice!",
+            "hello, [Bob, Alice]!",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect::<Vec<String>>();
+        assert_eq!(output, &correct);
+    }
 
     #[test]
     fn print_sequence() {

@@ -125,6 +125,11 @@ impl<'cli> CLI<'cli> {
     }
     pub fn run(&mut self, args: ExArgs) {
         if let Some(source) = args.source.clone() {
+            let work_path = match source.parent() {
+                Some(path) => path.to_path_buf(),
+                None => PathBuf::new(),
+            };
+            self.runtime.set_work_path(work_path);
             unsafe { PRINT_SET_INST = 0 };
             self.set_env(&args);
             let source = match std::fs::read_to_string(source) {

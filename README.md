@@ -115,6 +115,16 @@ checkout the [example](/examples/sequence.mls)
 ## About Comment
 use char `#` to comment something, check out example [here](/examples/formattive.mls)
 
+## About Module System
+- use `import()` to import module
+- module path is Unix like, independant to OS, relative to main script file path
+- `import()` checks for duplicate function name
+- `import()` WON'T checks for duplicate variable name
+- scripts in module will be executed, variables and functions in global scope of module will be imported to parent script
+- modules cannot produce outputs
+
+checkout [example](/examples/module.mls)
+
 ## Builtins
 ### Constants
 
@@ -159,9 +169,16 @@ use char `#` to comment something, check out example [here](/examples/formattive
 - output functions always output data of variables (including sequences)
 
 ### Init Functions
+
 | name | document |
 |------|----------|
 | Sequence(len) | return a sequence of length `len` with elements set to 0 |
+
+### Module Relative Functions
+
+| name | document |
+|------|----------|
+| import(module) | import the module from Unix like path `module` which is relative to main script file path |
 
 ### Math Functions
 
@@ -215,15 +232,17 @@ it is possible to read or get ENV by function `__[ENV_name]__()`, where `[ENV_na
 - support 1-base sequence
 - change the format of sequence information
 - print and println function now outputs data of sequences
+- assigning None to a variable is acceptable now
+- added module system
 
 ### Fixed Bugs
 - crashed when index non-sequence
 - crashed when indexing sequence data out of scope
 - acceptable to set invalid value to ENV by execution arguments
+- REPL will not pop previous Scope encoutering runtime error
 
 ### TODO
 - [ ] chagne Cargo.toml version
 - [ ] implement BigNum, fix i64 and f64 overflow problem (rarely happened)
 - [ ] improve error message
 - [ ] fix tail call optimization to recursion
-- [ ] module system

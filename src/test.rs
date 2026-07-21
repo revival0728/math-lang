@@ -20,6 +20,9 @@ pub mod examples {
     pub fn sequence() -> String {
         get("sequence.mls")
     }
+    pub fn module() -> String {
+        get("module.mls")
+    }
 }
 
 #[cfg(test)]
