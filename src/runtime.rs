@@ -19,6 +19,7 @@ pub struct Fun<'input> {
 
 #[derive(Debug, Default, Clone)]
 pub struct Scope<'input> {
+    id: usize,
     name: &'input str,
     stack_depth: u32,
     heap: Vec<Rc<RefCell<Var>>>,
@@ -32,11 +33,15 @@ pub struct Runtime<'input> {
     locals: Vec<Scope<'input>>,
     output: Vec<String>,
     out_buffer: String,
+    max_scope_id: usize,
 }
 
 impl<'input> Scope<'input> {
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new(name: &'input str, id: usize) -> Self {
+        let mut new = Self::default();
+        new.name = name;
+        new.id = id;
+        new
     }
     pub fn get_var(&self, name: &'input str) -> Option<Rc<RefCell<Var>>> {
         self.var_table.get(name).cloned()
@@ -154,12 +159,13 @@ impl<'input> Runtime<'input> {
         add_builtin_fn! { __detail_depth__(x) }
         add_builtin_fn! { __max_stack_depth__(x) }
         add_builtin_fn! { __print_set_inst__(x) }
+        add_builtin_fn! { __index_base__(x) }
         // logic functions
         add_builtin_fn! { if(x) }
         add_builtin_fn! { else(x) }
         add_builtin_fn! { sign(x) }
         // init functions
-        add_builtin_fn! { Array(len) }
+        add_builtin_fn! { Sequence(len) }
         // special functions
         runtime.builtin.set_fun(
             "$",
@@ -177,12 +183,16 @@ impl<'input> Runtime<'input> {
         );
 
         // add global scope
-        let mut global = Scope::default();
-        global.name = "__global__";
+        let mut global = Scope::new("__global__", runtime.next_scope_id());
         global.stack_depth = 0;
         runtime.locals.push(global);
 
         runtime
+    }
+    fn next_scope_id(&mut self) -> usize {
+        let id = self.max_scope_id;
+        self.max_scope_id += 1;
+        id
     }
     pub fn execute(&mut self, source: &'input str) -> Result<&Vec<String>, GlobalError> {
         let mut compiler = Compiler::new(source);
@@ -288,8 +298,7 @@ impl<'input> Runtime<'input> {
                     });
                 }
 
-                let mut sub_local = Scope::new();
-                sub_local.name = name;
+                let mut sub_local = Scope::new(name, self.next_scope_id());
                 sub_local.stack_depth = self.locals.last().unwrap().stack_depth + 1;
                 for (pname, expr) in fun.borrow().para_name.iter().zip(args.iter()) {
                     let value = self.exec_expr(expr, line)?;
@@ -412,10 +421,16 @@ impl<'input> Runtime<'input> {
             }
             Inst::Idx(lhs, rhs) => {
                 let lhs = self.exec_expr(lhs, line)?;
+                if lhs.borrow().type_ != VarType::Sequence {
+                    return Err(RuntimeError {
+                        line,
+                        msg: format!("only a sequence can be indexed"),
+                    });
+                }
                 let rhs = self.exec_expr(rhs, line)?;
                 check_none!(lhs, rhs);
-                let scope_id = (&*lhs.borrow()).get_scope_id();
-                let (start, end) = (&*lhs.borrow()).get_boundary();
+                let (scope_index, scope_id) = lhs.borrow().get_scope();
+                let (start, end) = lhs.borrow().get_boundary();
                 if rhs.borrow().type_ >= VarType::F64 {
                     return Err(RuntimeError {
                         line,
@@ -425,8 +440,9 @@ impl<'input> Runtime<'input> {
                 let start = start as i64;
                 let end = end as i64;
                 let index: i64 = (&*rhs.borrow()).into();
+                let index_base = unsafe { INDEX_BASE } as i64;
                 let index = if index >= 0 {
-                    start + index
+                    start + index - index_base
                 } else {
                     end + index
                 };
@@ -434,9 +450,10 @@ impl<'input> Runtime<'input> {
                     return Err(RuntimeError {
                         line,
                         msg: format!(
-                            "array index out of range, length is {} but got index {}",
+                            "sequence index out of range, length is {} but got index {} ({}-base)",
                             end - start,
-                            index - start
+                            index - start + index_base,
+                            index_base
                         ),
                     });
                 }
@@ -452,7 +469,23 @@ impl<'input> Runtime<'input> {
                         });
                     }
                 };
-                let val = self.locals[scope_id].get_heap(index);
+                let val = match self.locals.get(scope_index) {
+                    Some(scope) => {
+                        if scope.id != scope_id {
+                            return Err(RuntimeError {
+                                line,
+                                msg: format!("sequence data out of scope before indexing"),
+                            });
+                        }
+                        scope.get_heap(index)
+                    }
+                    None => {
+                        return Err(RuntimeError {
+                            line,
+                            msg: format!("sequence data out of scope before indexing"),
+                        });
+                    }
+                };
                 Ok(val)
             }
             Inst::Set(lhs, rhs) => match lhs {
@@ -698,6 +731,7 @@ impl<'input> Runtime<'input> {
                     &"__detail_depth__" => handle_integer_env_fun!(DETAIL_DEPTH, 1),
                     &"__max_stack_depth__" => handle_integer_env_fun!(MAX_STACK_DEPTH, u32::MAX),
                     &"__print_set_inst__" => handle_integer_env_fun!(PRINT_SET_INST, 1),
+                    &"__index_base__" => handle_integer_env_fun!(INDEX_BASE, 1),
                     &"if" => handle_logic_fun!(x == 0),
                     &"else" => handle_logic_fun!(x != 0),
                     &"sign" => {
@@ -721,7 +755,11 @@ impl<'input> Runtime<'input> {
                         let Some(x) = scope.get_var("x") else {
                             panic!("runtime internal error!")
                         };
-                        self.out_buffer.push_str(&x.borrow().to_string());
+                        let out = match x.borrow().type_ {
+                            VarType::Sequence => self.sequence_to_string(Rc::clone(&x), line)?,
+                            _ => x.borrow().to_string(),
+                        };
+                        self.out_buffer.push_str(&out);
                         Ok(Rc::new(RefCell::new(Var::none())))
                     }
                     &"println" => {
@@ -729,13 +767,17 @@ impl<'input> Runtime<'input> {
                         let Some(x) = scope.get_var("x") else {
                             panic!("runtime internal error!")
                         };
-                        self.out_buffer.push_str(&x.borrow().to_string());
+                        let out = match x.borrow().type_ {
+                            VarType::Sequence => self.sequence_to_string(Rc::clone(&x), line)?,
+                            _ => x.borrow().to_string(),
+                        };
+                        self.out_buffer.push_str(&out);
                         let output = self.out_buffer.drain(..).collect();
                         self.output.push(output);
                         self.out_buffer.clear();
                         Ok(Rc::new(RefCell::new(Var::none())))
                     }
-                    &"Array" => {
+                    &"Sequence" => {
                         let scope = self.locals.last_mut().expect("runtime internal error!");
                         let Some(len) = scope.get_var("len") else {
                             panic!("runtime internal error!")
@@ -746,7 +788,7 @@ impl<'input> Runtime<'input> {
                             return Err(RuntimeError {
                                 line,
                                 msg: format!(
-                                    "cannot init an array with type {}, only accept integer",
+                                    "cannot init an sequence with type {}, only accept integer",
                                     len_type
                                 ),
                             });
@@ -766,13 +808,44 @@ impl<'input> Runtime<'input> {
                         };
                         let prv_local = self.locals.len() - 2;
                         let ptr = self.locals[prv_local].add_arr(len);
-                        let arr = Var::new_array(ptr, prv_local);
+                        let prv_local_id = self.locals[prv_local].id;
+                        let arr = Var::new_sequence(ptr, (prv_local, prv_local_id));
                         Ok(Rc::new(RefCell::new(arr)))
                     }
                     _ => panic!("runtime internal error!"),
                 }
             }
         }
+    }
+    fn sequence_to_string(
+        &mut self,
+        seq: Rc<RefCell<Var>>,
+        line: usize,
+    ) -> Result<String, RuntimeError> {
+        let (scope_index, scope_id) = seq.borrow().get_scope();
+        let (start, end) = seq.borrow().get_boundary();
+        let ele: Result<Vec<String>, RuntimeError> = (start..end)
+            .map(|i| match self.locals.get(scope_index) {
+                Some(scope) => Ok({
+                    if scope.id != scope_id {
+                        return Err(RuntimeError {
+                            line,
+                            msg: format!("sequence data out of scope before indexing"),
+                        });
+                    }
+                    let e = scope.get_heap(i);
+                    match e.borrow().type_ {
+                        VarType::Sequence => self.sequence_to_string(Rc::clone(&e), line)?,
+                        _ => e.borrow().to_string(),
+                    }
+                }),
+                None => Err(RuntimeError {
+                    line,
+                    msg: format!("sequence data out of scope before indexing"),
+                }),
+            })
+            .collect();
+        Ok(format!("[{}]", ele?.join(", ")))
     }
 }
 
@@ -782,12 +855,30 @@ mod test {
     use crate::test::{examples, simple_expr};
 
     #[test]
-    fn array() {
-        let source = examples::array();
+    fn print_sequence() {
+        let mut runtime = Runtime::new();
+        runtime.execute("seq = Sequence(3)").unwrap();
+        runtime.execute("seq:0 = Sequence(3)").unwrap();
+        runtime.execute("print(seq)").unwrap();
+        let output = &runtime.output;
+        let correct = vec![
+            "<Sequence of Scope 0 with length 3 at 0x0000000000000000>",
+            "<Sequence of Scope 0 with length 3 at 0x0000000000000003>",
+            "[[0, 0, 0], 0, 0]",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect::<Vec<String>>();
+        assert_eq!(output, &correct);
+    }
+
+    #[test]
+    fn sequence() {
+        let source = examples::sequence();
         let mut runtime = Runtime::new();
         let output = runtime.execute(&source).unwrap();
         let correct = vec![
-            "<Array of Scope 0 at 0x0:0x3>",
+            "<Sequence of Scope 0 with length 3 at 0x0000000000000000>",
             "0",
             "1",
             "1",

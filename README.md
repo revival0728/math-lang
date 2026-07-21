@@ -92,7 +92,7 @@ you should never use variable name with format `__[name]__`, it is used by ENV, 
 types are automatically determined, depends on precision and size of value
 
 ```
-Array | BigNum > f64 > i64 > i32
+Sequence | BigNum > f64 > i64 > i32
 ```
 
 where `f64`, `i64`, `i32` are Rust primitve types, `BigNum` is used only when precision or size of value is required
@@ -104,11 +104,13 @@ currently values are limited by Rust primitive type `f64`, will change after imp
 
 which is in [-1.7976931348623157e+308, 1.7976931348623157e+308]
 
-### About Array
-- init an array with function `Array(len)`
-- indexing an array with operator `:`
+### About Sequence
+- just like array in other language
+- init a sequence with function `Sequence(len)`
+- indexing a sequence with operator `:`
+- you can chose to use 0-base or 1-base
 
-checkout the [example](/examples/array.mls)
+checkout the [example](/examples/sequence.mls)
 
 ## About Comment
 use char `#` to comment something, check out example [here](/examples/formattive.mls)
@@ -154,11 +156,12 @@ use char `#` to comment something, check out example [here](/examples/formattive
 - outputs by output functions will be buffered until calling `println()` or reached end of source
 - source in REPL is single line
 - source in file is entire file
+- output functions always output data of variables (including sequences)
 
 ### Init Functions
 | name | document |
 |------|----------|
-| Array(len) | return an array of length `len` |
+| Sequence(len) | return a sequence of length `len` with elements set to 0 |
 
 ### Math Functions
 
@@ -196,6 +199,7 @@ it is possible to read or get ENV by function `__[ENV_name]__()`, where `[ENV_na
 | PRINT_SET_INST | to print `set` intruction result or not | repl=1, source=0 | [0, 1] |
 | DETAIL_DEPTH | the output level of detail information | repl=0, source=1 |[0, 1] |
 | MAX_STACK_DEPTH | the maximum stack depth of recrusive function | 512 |[0, inf] |
+| INDEX_BASE | the base of indexing | 0 | [0, 1] |
 
 - maximum stack size is not ENV, but can be configured by execution argument, by default is 64MB
 
@@ -206,16 +210,20 @@ it is possible to read or get ENV by function `__[ENV_name]__()`, where `[ENV_na
 
 ## Development
 ### Main Changes
-- allow assigning value to an expression
-- added Array support
+- rename array to sequence (more mathematical)
+- match the name of ENV PRINT_SET_INST in execution argument and script function
+- support 1-base sequence
+- change the format of sequence information
+- print and println function now outputs data of sequences
 
 ### Fixed Bugs
-- crashed while use None as operand of power operation
-- inline comment broke newline
-- negative sign affected expressions inside parens
+- crashed when index non-sequence
+- crashed when indexing sequence data out of scope
+- acceptable to set invalid value to ENV by execution arguments
 
 ### TODO
+- [ ] chagne Cargo.toml version
 - [ ] implement BigNum, fix i64 and f64 overflow problem (rarely happened)
 - [ ] improve error message
-- [ ] maybe array?
 - [ ] fix tail call optimization to recursion
+- [ ] module system

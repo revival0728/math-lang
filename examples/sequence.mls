@@ -1,19 +1,19 @@
 # init array with length of 5
-arr = Array(3)
+seq = Sequence(3)
 
 # init array values
-arr:0 = 0
-arr:-2 = 1   # same as "arr:1 = 1"
-arr:-1 = 1   # same as "arr:2 = 1"
+seq:0 = 0
+seq:-2 = 1   # same as "seq:1 = 1"
+seq:-1 = 1   # same as "seq:2 = 1"
 
 # do algorithm
 $(
     .(loop(i, n) = (
         .(if(i - n)())
         .(else(i - n)(
-            .(arr:2 = arr:0 + arr:1)
-            .(arr:0 = arr:1)
-            .(arr:1 = arr:2)
+            .(seq:2 = seq:0 + seq:1)
+            .(seq:0 = seq:1)
+            .(seq:1 = seq:2)
             .(loop(i + 1, n))
         ))
     ))
@@ -22,4 +22,4 @@ $(
 
 # print answer
 print("fib(10) = ")
-println(arr:0)
+println(seq:0)
