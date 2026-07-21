@@ -242,7 +242,6 @@ it is possible to read or get ENV by function `__[ENV_name]__()`, where `[ENV_na
 - REPL will not pop previous Scope encoutering runtime error
 
 ### TODO
-- [ ] chagne Cargo.toml version
 - [ ] implement BigNum, fix i64 and f64 overflow problem (rarely happened)
 - [ ] improve error message
 - [ ] fix tail call optimization to recursion
