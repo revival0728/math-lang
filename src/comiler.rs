@@ -217,7 +217,9 @@ impl<'input> Compiler<'input> {
                     }
                 }
                 Token::RParen => {
-                    paren_depth -= 1;
+                    if paren_depth > 0 {
+                        paren_depth -= 1;
+                    }
                     to_add_mul = true;
                     to_make_func = false;
                     to_neg_sign = false;

@@ -106,7 +106,7 @@ which is in [-1.7976931348623157e+308, 1.7976931348623157e+308]
 
 ### About Sequence
 - just like array in other language
-- init a sequence with function `Sequence(len)`
+- create a sequence with function `Sequence(len)`
 - indexing a sequence with operator `:`
 - you can chose to use 0-base or 1-base
 
@@ -168,11 +168,12 @@ checkout [example](/examples/module.mls)
 - source in file is entire file
 - output functions always output data of variables (including sequences)
 
-### Init Functions
+### Sequence Relative Functions
 
 | name | document |
 |------|----------|
 | Sequence(len) | return a sequence of length `len` with elements set to 0 |
+| len(seq) | return the length of `seq`(must be Sequence) |
 
 ### Module Relative Functions
 
@@ -227,19 +228,15 @@ it is possible to read or get ENV by function `__[ENV_name]__()`, where `[ENV_na
 
 ## Development
 ### Main Changes
-- rename array to sequence (more mathematical)
-- match the name of ENV PRINT_SET_INST in execution argument and script function
-- support 1-base sequence
-- change the format of sequence information
-- print and println function now outputs data of sequences
-- assigning None to a variable is acceptable now
-- added module system
+- support return value of sequence
+- added builtin function len() to get length of sequence
+- rename init functions to `Sequence Relative Functions`
 
 ### Fixed Bugs
-- crashed when index non-sequence
-- crashed when indexing sequence data out of scope
-- acceptable to set invalid value to ENV by execution arguments
-- REPL will not pop previous Scope encoutering runtime error
+- import information output wrong module name
+- import of sequence only import first demension
+- return of sequence only return first demension
+- alone right paren caused crashing
 
 ### TODO
 - [ ] implement BigNum, fix i64 and f64 overflow problem (rarely happened)

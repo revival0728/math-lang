@@ -1,4 +1,4 @@
-# init array with length of 5
+# init array with length of 3
 seq = Sequence(3)
 
 # init array values

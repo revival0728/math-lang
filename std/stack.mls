@@ -1,0 +1,19 @@
+# init stack with capacity
+Stack(capacity) = (
+    Sequence(capacity + 1)
+)
+
+Stack_push(stk, value) = $(
+    .(stk:0 = stk:0 + 1)
+    .(stk:(stk:0) = value)
+)
+
+Stack_pop(stk) = (
+    .(value = stk:(stk:0))
+    .(stk:0 = stk:0 - 1)
+    value
+)
+
+Stack_top(stk) = (
+    stk:(stk:0)
+)

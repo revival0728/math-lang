@@ -170,8 +170,9 @@ impl<'input> Runtime<'input> {
         add_builtin_fn! { if(x) }
         add_builtin_fn! { else(x) }
         add_builtin_fn! { sign(x) }
-        // init functions
+        // sequence relative functions
         add_builtin_fn! { Sequence(len) }
+        add_builtin_fn! { len(seq) }
         // module relative functions
         add_builtin_fn! { import(__module__) }
         // special functions
@@ -322,7 +323,12 @@ impl<'input> Runtime<'input> {
                 }
                 self.locals.push(sub_local);
                 let rval = self.exec_fun(&fun.borrow(), line)?;
-                self.locals.pop();
+                let fun_scope = self.locals.pop().unwrap();
+                let cur_scope_index = self.locals.len() - 1;
+                let cur_scope = self.locals.last_mut().unwrap();
+                if rval.borrow().type_ == VarType::Sequence {
+                    Runtime::sequence_move_data(&fun_scope, cur_scope, cur_scope_index, &rval);
+                }
                 Ok(rval)
             }
             Expr::Number(data) => {
@@ -430,6 +436,12 @@ impl<'input> Runtime<'input> {
                     }
                 }
                 let rhs = self.exec_expr(rhs, line)?;
+                if lhs.borrow().type_ <= VarType::I64 {
+                    let lhs_val: i64 = (&*lhs.borrow()).into();
+                    if lhs_val == 1 {
+                        return Ok(rhs);
+                    }
+                }
                 check_none!(rhs);
                 check_is_num!(rhs);
                 let eval = Rc::new(RefCell::new(&*lhs.borrow() * &*rhs.borrow()));
@@ -824,11 +836,30 @@ impl<'input> Runtime<'input> {
                                 });
                             }
                         };
-                        let prv_local = self.locals.len() - 2;
-                        let ptr = self.locals[prv_local].add_arr(len);
-                        let prv_local_id = self.locals[prv_local].id;
-                        let arr = Var::new_sequence(ptr, (prv_local, prv_local_id));
+                        let cur_local = self.locals.len() - 1;
+                        let ptr = self.locals[cur_local].add_arr(len);
+                        let cur_local_id = self.locals[cur_local].id;
+                        let arr = Var::new_sequence(ptr, (cur_local, cur_local_id));
                         Ok(Rc::new(RefCell::new(arr)))
+                    }
+                    &"len" => {
+                        let scope = self.locals.last_mut().expect("runtime internal error!");
+                        let Some(seq) = scope.get_var("seq") else {
+                            panic!("runtime internal error!")
+                        };
+                        check_none!(seq);
+                        if seq.borrow().type_ != VarType::Sequence {
+                            return Err(RuntimeError {
+                                line,
+                                msg: format!(
+                                    "builtin function len() could only get the length of Sequence"
+                                ),
+                            });
+                        }
+                        let (start, end) = seq.borrow().get_boundary();
+                        // FIXME: break on 128bit?
+                        let value = (end - start) as i64;
+                        Ok(Rc::new(RefCell::new(Var::from(value))))
                     }
                     &"import" => {
                         let scope = self.locals.last_mut().expect("runtime internal error!");
@@ -900,17 +931,11 @@ impl<'input> Runtime<'input> {
                                     let var_type = var_value.borrow().type_;
                                     match var_type {
                                         VarType::Sequence => {
-                                            // find heap location for module sequence
-                                            let (start, end) = var_value.borrow().get_boundary();
-                                            let ptr = prv_scope.add_arr(end - start);
-                                            // copy heap data
-                                            for (pi, mi) in (start..end).zip(ptr.0..ptr.1) {
-                                                prv_scope.heap[pi] = Rc::clone(&mod_scope.heap[mi]);
-                                            }
-                                            let prv_scope_id = prv_scope.id;
-                                            *var_value.borrow_mut() = Var::new_sequence(
-                                                ptr,
-                                                (prv_scope_index, prv_scope_id),
+                                            Runtime::sequence_move_data(
+                                                mod_scope,
+                                                prv_scope,
+                                                prv_scope_index,
+                                                var_value,
                                             );
                                             prv_scope.add_ref_var(var_name, Rc::clone(var_value));
                                         }
@@ -937,7 +962,7 @@ impl<'input> Runtime<'input> {
                                 Ok(Rc::new(RefCell::new(Var::from_string(unsafe {
                                     // SAFE: no multiple threads
                                     if DETAIL_DEPTH == 1 {
-                                        format!("<import module {}>", name)
+                                        format!("<import module {}>", mod_name)
                                     } else {
                                         format!("")
                                     }
@@ -953,6 +978,24 @@ impl<'input> Runtime<'input> {
                 }
             }
         }
+    }
+    fn sequence_move_data(
+        from: &Scope<'input>,
+        to: &mut Scope<'input>,
+        to_index: usize,
+        var_value: &Rc<RefCell<Var>>,
+    ) {
+        let from_ptr = var_value.borrow().get_boundary();
+        let to_ptr = to.add_arr(from_ptr.1 - from_ptr.0);
+        // copy heap data recursively
+        for (fi, ti) in (from_ptr.0..from_ptr.1).zip(to_ptr.0..to_ptr.1) {
+            to.heap[ti] = Rc::clone(&from.heap[fi]);
+            if from.heap[fi].borrow().type_ == VarType::Sequence {
+                Runtime::sequence_move_data(from, to, to_index, &from.heap[fi]);
+            }
+        }
+        let to_id = to.id;
+        *var_value.borrow_mut() = Var::new_sequence(to_ptr, (to_index, to_id));
     }
     fn sequence_to_string(
         &mut self,
