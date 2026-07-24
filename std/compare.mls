@@ -1,0 +1,19 @@
+# This is a script of compare functions
+
+# less
+le(a, b) = sign(b - a) - 1
+
+# greater
+ge(a, b) = sign(a - b) - 1
+
+# less or equal
+leq(a, b) = sign(sign(b - a) + 1) - 1
+
+# greater or equal
+geq(a, b) = sign(sign(a - b) + 1) - 1
+
+# return larger number bewteen a and b
+max(a, b) = if(ge(a, b))(a) + else(ge(a, b))(b)
+
+# return smaller number bewteen a and b
+min(a, b) = if(le(a, b))(a) + else(le(a, b))(b)

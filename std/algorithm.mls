@@ -1,92 +1,181 @@
 # This is a script of usefull algorithms
 
+# User Redefinable
 # define sort comparision, user can redefine this function for custom sort rule
 sort_compare(l, r) = sign(sign(r - l) + 1) - 1
 
 # sort() function with merge sort implementation
 # The Sequence is defined as sorted for all sort_compare(seq:i, seq:j) == 0, where i < j
-sort(seq) = _sort(seq, 0, len(seq))
-_sort(seq, l, r) = $(
-    .(m = int32((l + r) / 2))
-    .(else(r - l - 1)(
-        .(_sort(seq, l, m))
-        .(_sort(seq, m, r))
+sort(seq) = $(
+    .(_sort(seq, l, r) = $(
+        .(m = int32((l + r) / 2))
+        .(else(r - l - 1)(
+            .(_sort(seq, l, m))
+            .(_sort(seq, m, r))
+        ))
+        .(seql = Sequence(m - l))
+        .(seqr = Sequence(r - m))
+        .(copy(from, to, fidx, tidx, len) = $(
+            else(len - tidx)(
+                .(to:tidx = from:fidx)
+                .(copy(from, to, fidx + 1, tidx + 1, len))
+            )
+        ))
+        .(copy(seq, seql, l, 0, m - l))
+        .(copy(seq, seqr, m, 0, r - m))
+        .(ptr = l)
+        .(ptrl = 0)
+        .(ptrr = 0)
+        .(merge() = $(
+            else(sign(m - l - ptrl)sign(r - m - ptrr))(
+                .(cmp = sort_compare(seql:ptrl, seqr:ptrr))
+                .(if(cmp)(
+                    .(seq:ptr = seql:ptrl)
+                    .(ptrl = ptrl + 1)
+                ))
+                .(else(cmp)(
+                    .(seq:ptr = seqr:ptrr)
+                    .(ptrr = ptrr + 1)
+                ))
+                .(ptr = ptr + 1)
+                .(merge())
+            )
+        ))
+        .(merge())
+        .(rest(seqp, ptrp, len) = $(
+            else(len - ptrp)(
+                .(seq:ptr = seqp:ptrp)
+                .(ptr = ptr + 1)
+                .(rest(seqp, ptrp + 1, len))
+            )
+        ))
+        .(rest(seql, ptrl, m - l))
+        .(rest(seqr, ptrr, r - m))
     ))
-    .(seql = Sequence(m - l))
-    .(seqr = Sequence(r - m))
-    .(copy(from, to, fidx, tidx, len) = $(
-        else(len - tidx)(
-            .(to:tidx = from:fidx)
-            .(copy(from, to, fidx + 1, tidx + 1, len))
-        )
-    ))
-    .(copy(seq, seql, l, 0, m - l))
-    .(copy(seq, seqr, m, 0, r - m))
-    .(ptr = l)
-    .(ptrl = 0)
-    .(ptrr = 0)
-    .(merge() = $(
-        else(sign(m - l - ptrl)sign(r - m - ptrr))(
-            .(if(sort_compare(seql:ptrl, seqr:ptrr))(
-                .(seq:ptr = seql:ptrl)
-                .(upd = 0)
-            ))
-            .(else(sort_compare(seql:ptrl, seqr:ptrr))(
-                .(seq:ptr = seqr:ptrr)
-                .(upd = 1)
-            ))
-            .(if(upd)(ptrl = ptrl + 1))
-            .(else(upd)(ptrr = ptrr + 1))
-            .(ptr = ptr + 1)
-            .(merge())
-        )
-    ))
-    .(merge())
-    .(rest(seqp, ptrp, len) = $(
-        else(len - ptrp)(
-            .(seq:ptr = seqp:ptrp)
-            .(ptr = ptr + 1)
-            .(rest(seqp, ptrp + 1, len))
-        )
-    ))
-    .(rest(seql, ptrl, m - l))
-    .(rest(seqr, ptrr, r - m))
+    .(_sort(seq, 0, len(seq)))
 )
 
 # test if Sequence is sorted
-is_sorted(seq) = _is_sorted(seq, 1, len(seq))
-_is_sorted(seq, idx, len) = (
-    if(len - idx)(true) +
-    else(len - idx)(
-        .(nxt = _is_sorted(seq, idx + 1, len))
-        .(cur = sort_compare(seq:(idx - 1), seq:idx))
-        sign(nxt + cur)
-    )
+is_sorted(seq) = (
+    .(_is_sorted(seq, idx, len) = (
+        if(len - idx)(true) +
+        else(len - idx)(
+            .(nxt = _is_sorted(seq, idx + 1, len))
+            .(cur = sort_compare(seq:(idx - 1), seq:idx))
+            sign(nxt + cur)
+        )
+    ))
+    _is_sorted(seq, 1, len(seq))
 )
 
 # fill Sequence with value
-fill(seq, value) = _fill(seq, value, 0, len(seq))
-_fill(seq, value, idx, len) = $(
-    .(else(len - idx)(
-        .(seq:idx = value)
-        .(_fill(seq, value, idx + 1, len))
+fill(seq, value) = $(
+    .(_fill(seq, value, idx, len) = $(
+        .(else(len - idx)(
+            .(seq:idx = value)
+            .(_fill(seq, value, idx + 1, len))
+        ))
     ))
+    .(_fill(seq, value, 0, len(seq)))
+)
+
+# copy Sequence data
+copy(from, to) = $(
+    .(assert_eq(len(from), len(to), "copy() function must passes the sequence with same length"))
+    .(_copy(from, to, idx, len) = $(
+        .(else(len - idx)(
+            .(to:idx = from:idx)
+            .(_copy(idx + 1, len))
+        ))
+    ))
+    .(_copy(from, to, 0, len(from)))
 )
 
 # fill Sequence with ascending values starting with "value"
-ascending(seq, value) = _ascending(seq, value, 0, len(seq))
-_ascending(seq, value, idx, len) = $(
-    .(else(len - idx)(
-        .(seq:idx = value)
-        .(_ascending(seq, value + 1, idx + 1, len))
+ascending(seq, value) = $(
+    .(_ascending(seq, value, idx, len) = $(
+        .(else(len - idx)(
+            .(seq:idx = value)
+            .(_ascending(seq, value + 1, idx + 1, len))
+        ))
     ))
+    .(_ascending(seq, value, 0, len(seq)))
 )
 
 # fill Sequence with descending values starting with "value"
-descending(seq, value) = _descending(seq, value, 0, len(seq))
-_descending(seq, value, idx, len) = $(
-    .(else(len - idx)(
-        .(seq:idx = value)
-        .(_descending(seq, value - 1, idx + 1, len))
+descending(seq, value) = $(
+    .(_descending(seq, value, idx, len) = $(
+        .(else(len - idx)(
+            .(seq:idx = value)
+            .(_descending(seq, value - 1, idx + 1, len))
+        ))
     ))
+    .(_descending(seq, value, 0, len(seq)))
+)
+
+# do binary search to the Seqeunce and find first matches, return index of value in Sequence
+bsearch(seq, value) = (
+    .(l = 0)
+    .(r = len(seq))
+    .(_bsearch() = (
+        if(sign(r - l) - 1)(
+            .(m = int32((l + r) / 2))
+            .(comp = sort_compare(value, seq:m))
+            .(if(comp)(r = m))
+            .(else(comp)(l = m + 1))
+            .(_bsearch())
+        )
+    ))
+    .(_bsearch())
+    l
+)
+
+# find the first matches, return index of value in Sequence
+first_of(seq, value) = (
+    .(index = 0)
+    .(_first_of(seq, len) = $(
+        else(len - index)else(seq:index - value)(
+            .(index = index + 1)
+            .(_first_of(seq, len))
+        )
+    ))
+    .(_first_of(seq, len(seq)))
+    index
+)
+
+# find the last matches, return index of value in Sequence
+last_of(seq, value) = (
+    .(index = len(seq) - 1)
+    .(_last_of(seq, -1) = $(
+        else(len - index)else(seq:index - value)(
+            .(index = index - 1)
+            .(_last_of(seq, len))
+        )
+    ))
+    .(_last_of(seq, len(seq)))
+    index
+)
+
+# check if all of the term in Sequence is 0
+all_of(seq) = (
+    .(_all_of(seq, idx, len) = (
+        else(len - idx)(seq:idx + _all_of(seq, idx + 1, len))
+    ))
+    sign(_all_of(seq, 0, len(seq)))
+)
+
+# check if any of the term in Sequence is 0
+any_of(seq) = (
+    .(_any_of(seq, idx, len) = (
+        if(len - idx)(1) + else(len - idx)(sign(seq:idx)_any_of(seq, idx + 1, len))
+    ))
+    sign(_any_of(seq, 0, len(seq)))
+)
+
+# check if any of the term in Sequence is 0
+none_of(seq) = (
+    .(_none_of(seq, idx, len) = (
+        if(len - idx)(1) + else(len - idx)(sign(seq:idx)_none_of(seq, idx + 1, len))
+    ))
+    if(sign(_none_of(seq, 0, len(seq))))
 )

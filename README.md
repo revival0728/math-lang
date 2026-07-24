@@ -261,6 +261,7 @@ it is possible to read or get ENV by function `__[ENV_name]__()`, where `[ENV_na
 ### Fixed Bugs
 - passing variable references into function instead of values
 - accessing parent Scope variable while doing recursion
+- file ends with comment causes CE::("invalid token")
 
 ### TODO
 - [ ] update Cargo.toml version
@@ -268,3 +269,4 @@ it is possible to read or get ENV by function `__[ENV_name]__()`, where `[ENV_na
 - [ ] improve error message
 - [ ] fix tail call optimization to recursion
 - [ ] add type(), hash()
+- [ ] add function info expression
