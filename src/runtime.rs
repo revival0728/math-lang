@@ -324,7 +324,8 @@ impl<'input> Runtime<'input> {
                 sub_local.stack_depth = self.locals.last().unwrap().stack_depth + 1;
                 for (pname, expr) in fun.borrow().para_name.iter().zip(args.iter()) {
                     let value = self.exec_expr(expr, line)?;
-                    sub_local.add_ref_var(pname, value);
+                    let value = (*value.borrow()).clone();
+                    sub_local.add_var(pname, value);
                 }
                 self.locals.push(sub_local);
                 let rval = self.exec_fun(&fun.borrow(), line)?;
@@ -352,7 +353,11 @@ impl<'input> Runtime<'input> {
             Expr::Var(name) => {
                 let mut var = None;
                 let mut found = false;
+                let mut last_name = "";
                 for scope in self.locals.iter_mut().rev() {
+                    if last_name == scope.name {
+                        continue;
+                    }
                     if found {
                         break;
                     }
@@ -360,6 +365,7 @@ impl<'input> Runtime<'input> {
                         found = true;
                         var = Some(evar);
                     }
+                    last_name = scope.name;
                 }
                 if !found {
                     if let Some(bvar) = self.builtin.get_var(name) {
@@ -541,11 +547,16 @@ impl<'input> Runtime<'input> {
                             msg: format!("overriding builtin constant {}", name),
                         });
                     }
+                    let mut last_name = "";
                     for scope in self.locals.iter().rev() {
+                        if last_name == scope.name {
+                            continue;
+                        }
                         if let Some(var) = scope.get_var(name) {
                             *var.borrow_mut() = Var::clone(&rhs.borrow());
                             return Ok(var);
                         }
+                        last_name = scope.name;
                     }
                     self.locals
                         .last_mut()

@@ -1,31 +1,92 @@
 # This is a script of usefull algorithms
 
 # define sort comparision, user can redefine this function for custom sort rule
-sort_compare(l, r) = (sign(r - l) - 1)
+sort_compare(l, r) = sign(sign(r - l) + 1) - 1
 
-# TODO: finsih sort function
 # sort() function with merge sort implementation
 # The Sequence is defined as sorted for all sort_compare(seq:i, seq:j) == 0, where i < j
 sort(seq) = _sort(seq, 0, len(seq))
 _sort(seq, l, r) = $(
-    .(m = int32(l + r))
+    .(m = int32((l + r) / 2))
+    .(else(r - l - 1)(
+        .(_sort(seq, l, m))
+        .(_sort(seq, m, r))
+    ))
+    .(seql = Sequence(m - l))
+    .(seqr = Sequence(r - m))
+    .(copy(from, to, fidx, tidx, len) = $(
+        else(len - tidx)(
+            .(to:tidx = from:fidx)
+            .(copy(from, to, fidx + 1, tidx + 1, len))
+        )
+    ))
+    .(copy(seq, seql, l, 0, m - l))
+    .(copy(seq, seqr, m, 0, r - m))
+    .(ptr = l)
+    .(ptrl = 0)
+    .(ptrr = 0)
+    .(merge() = $(
+        else(sign(m - l - ptrl)sign(r - m - ptrr))(
+            .(if(sort_compare(seql:ptrl, seqr:ptrr))(
+                .(seq:ptr = seql:ptrl)
+                .(upd = 0)
+            ))
+            .(else(sort_compare(seql:ptrl, seqr:ptrr))(
+                .(seq:ptr = seqr:ptrr)
+                .(upd = 1)
+            ))
+            .(if(upd)(ptrl = ptrl + 1))
+            .(else(upd)(ptrr = ptrr + 1))
+            .(ptr = ptr + 1)
+            .(merge())
+        )
+    ))
+    .(merge())
+    .(rest(seqp, ptrp, len) = $(
+        else(len - ptrp)(
+            .(seq:ptr = seqp:ptrp)
+            .(ptr = ptr + 1)
+            .(rest(seqp, ptrp + 1, len))
+        )
+    ))
+    .(rest(seql, ptrl, m - l))
+    .(rest(seqr, ptrr, r - m))
 )
 
 # test if Sequence is sorted
 is_sorted(seq) = _is_sorted(seq, 1, len(seq))
 _is_sorted(seq, idx, len) = (
-    if(len - idx))() +
+    if(len - idx)(true) +
     else(len - idx)(
         .(nxt = _is_sorted(seq, idx + 1, len))
-        .(cur = sort_compare(seq:(i - 1), seq:i))
+        .(cur = sort_compare(seq:(idx - 1), seq:idx))
+        sign(nxt + cur)
     )
 )
 
 # fill Sequence with value
-fill(seq, value) = _fill(seq, value, 0, len(value))
+fill(seq, value) = _fill(seq, value, 0, len(seq))
 _fill(seq, value, idx, len) = $(
     .(else(len - idx)(
         .(seq:idx = value)
         .(_fill(seq, value, idx + 1, len))
+    ))
+)
+
+# fill Sequence with ascending values starting with "value"
+ascending(seq, value) = _ascending(seq, value, 0, len(seq))
+_ascending(seq, value, idx, len) = $(
+    .(else(len - idx)(
+        .(seq:idx = value)
+        .(_ascending(seq, value + 1, idx + 1, len))
+    ))
+)
+
+# fill Sequence with descending values starting with "value"
+descending(seq, value) = _descending(seq, value, 0, len(seq))
+_descending(seq, value, idx, len) = $(
+    .(else(len - idx)(
+        .(seq:idx = value)
+        .(_descending(seq, value - 1, idx + 1, len))
     ))
 )
