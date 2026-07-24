@@ -16,7 +16,7 @@ pub enum VarType {
     Sequence,
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Var {
     pub type_: VarType,
     data: Vec<u8>,

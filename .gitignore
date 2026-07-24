@@ -1,3 +1,4 @@
 # Rust
 /target
 /analyze
+/std/test/test.mls

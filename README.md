@@ -4,6 +4,13 @@ Toy scripting language to calculate math
 
 Everything in this language are math expressions
 
+## Features
+
+- Intuitive scripting experience for math
+- Eazy to learn with simple language syntax
+- With [VSCode language extension](https://github.com/revival0728/math-lang-vsc-extension) support
+- Mathematic skills are all matters!
+
 ## How to Play
 
 1. get the `math-lang` binary
@@ -132,6 +139,10 @@ checkout [example](/examples/module.mls)
 |------|----------|
 | pi   | 3.14159265358979323846264338327950288 (std::f64::consts::PI) |
 | e    | 2.71828182845904523536028747135266250 (std::f64::consts::E)|
+| true | 0 |
+| false | 1 |
+
+- NOTICE: `true` is 0 and `false` is 1, else if(true) will be false right?
 
 ### Special Functions
 
@@ -155,6 +166,13 @@ checkout [example](/examples/module.mls)
 | sign(x) | return `1` if `x > 0`, `0` if `x == 0`, `-1` if `x < 0`, using Rust [`f64::total_cmp`](https://doc.rust-lang.org/stable/std/primitive.f64.html#method.total_cmp) to compare |
 
 - it works because runtime will check `lhs == 0`, if true then will not calcuate `rhs`
+
+### Type Functions
+
+| name | document |
+|------|----------|
+| in32(x) | `trunc(x)` function but guarantees return type is I32 or else gets RuntimeError |
+
 
 ### Output Functions
 
@@ -180,6 +198,14 @@ checkout [example](/examples/module.mls)
 | name | document |
 |------|----------|
 | import(module) | import the module from Unix like path `module` which is relative to main script file path |
+
+### Control Functions
+
+| name | document |
+|------|----------|
+| abort(msg) | abort the Runtime with `msg` | 
+| assert_eq(lhs, rhs, msg) | checks if `lhs == rhs` by value or else abort the Runtime with `msg` |
+| assert_ne(lhs, rhs, msg) | checks if `lhs != rhs` by value or else abort the Runtime with `msg` |
 
 ### Math Functions
 
@@ -228,17 +254,12 @@ it is possible to read or get ENV by function `__[ENV_name]__()`, where `[ENV_na
 
 ## Development
 ### Main Changes
-- support return value of sequence
-- added builtin function len() to get length of sequence
-- rename init functions to `Sequence Relative Functions`
-
-### Fixed Bugs
-- import information output wrong module name
-- import of sequence only import first demension
-- return of sequence only return first demension
-- alone right paren caused crashing
+- added type function int32()
+- added builtin constants true and false
+- added control functions abort(), assert_eq() and assert_ne()
 
 ### TODO
 - [ ] implement BigNum, fix i64 and f64 overflow problem (rarely happened)
 - [ ] improve error message
 - [ ] fix tail call optimization to recursion
+- [ ] add type(), hash()

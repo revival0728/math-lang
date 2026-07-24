@@ -1,0 +1,31 @@
+# This is a script of usefull algorithms
+
+# define sort comparision, user can redefine this function for custom sort rule
+sort_compare(l, r) = (sign(r - l) - 1)
+
+# TODO: finsih sort function
+# sort() function with merge sort implementation
+# The Sequence is defined as sorted for all sort_compare(seq:i, seq:j) == 0, where i < j
+sort(seq) = _sort(seq, 0, len(seq))
+_sort(seq, l, r) = $(
+    .(m = int32(l + r))
+)
+
+# test if Sequence is sorted
+is_sorted(seq) = _is_sorted(seq, 1, len(seq))
+_is_sorted(seq, idx, len) = (
+    if(len - idx))() +
+    else(len - idx)(
+        .(nxt = _is_sorted(seq, idx + 1, len))
+        .(cur = sort_compare(seq:(i - 1), seq:i))
+    )
+)
+
+# fill Sequence with value
+fill(seq, value) = _fill(seq, value, 0, len(value))
+_fill(seq, value, idx, len) = $(
+    .(else(len - idx)(
+        .(seq:idx = value)
+        .(_fill(seq, value, idx + 1, len))
+    ))
+)
