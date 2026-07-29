@@ -16,10 +16,31 @@ pub enum VarType {
     Sequence,
 }
 
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Eq)]
 pub struct Var {
     pub type_: VarType,
     data: Vec<u8>,
+}
+
+impl PartialEq for Var {
+    fn eq(&self, other: &Self) -> bool {
+        let tp = std::cmp::max(self.type_, other.type_);
+        macro_rules! primitive_eq {
+            ($ptype:ident) => {{
+                let l: $ptype = self.into();
+                let r: $ptype = other.into();
+                l == r
+            }};
+        }
+        match tp {
+            VarType::None => self.data == other.data,
+            VarType::I32 => primitive_eq!(i32),
+            VarType::I64 => primitive_eq!(i64),
+            VarType::F64 => primitive_eq!(f64),
+            VarType::BigNum => panic!("BigNum not implemented yet."),
+            VarType::Sequence => self.data == other.data,
+        }
+    }
 }
 
 impl Display for VarType {

@@ -1,0 +1,36 @@
+test_stack_mls() = $(
+    .(import("../stack.mls"))
+
+    .(test_Stack())
+    .(test_Stack_push())
+    .(test_Stack_top())
+    .(test_Stack_pop())
+
+    .(println("std/stack.mls passed all tests!"))
+)
+
+test_Stack() = $(
+    .(stk = Stack(1))
+    .(assert_eq(len(stk), 2, "stack::Stack() failed"))
+)
+
+test_Stack_push() = $(
+    .(stk = Stack(1))
+    .(Stack_push(stk, 1))
+    .(assert_eq(stk:1, 1, "stack::Stack_push() failed"))
+)
+
+test_Stack_top() = $(
+    .(stk = Stack(1))
+    .(Stack_push(stk, 1))
+    .(assert_eq(Stack_top(stk), 1, "stack::Stack_top() failed"))
+)
+
+test_Stack_pop() = $(
+    .(stk = Stack(1))
+    .(Stack_push(stk, 1))
+    .(assert_eq(Stack_pop(stk), 1, "stack::Stack_pop() failed"))
+    .(assert_eq(stk:0, 0, "stack::Stack_pop() failed"))
+)
+
+test_stack_mls()
