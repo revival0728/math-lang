@@ -171,7 +171,7 @@ checkout [example](/examples/module.mls)
 
 | name | document |
 |------|----------|
-| in32(x) | `trunc(x)` function but guarantees return type is I32 or else gets RuntimeError |
+| int32(x) | `trunc(x)` function but guarantees return type is I32 or else gets RuntimeError |
 
 
 ### Output Functions
