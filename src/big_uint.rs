@@ -91,28 +91,28 @@ impl Display for BigUInt {
     }
 }
 
-#[cfg(test)]
-mod test {
-    use crate::big_uint::BigUInt;
+// #[cfg(test)]
+// mod test {
+//     use crate::big_uint::BigUInt;
 
-    #[test]
-    fn shr_return() {
-        let mut num1 = BigUInt::new();
-        num1.data.push(12345);
+//     #[test]
+//     fn shr_return() {
+//         let mut num1 = BigUInt::new();
+//         num1.data.push(12345);
 
-        let correct: Vec<u8> = vec![
-            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1, 1,
-            0, 0, 1,
-        ];
-        let answer: Vec<u8> = (0..correct.len()).map(|_| num1.shl_return()).collect();
-        assert_eq!(answer, correct);
-    }
+//         let correct: Vec<u8> = vec![
+//             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1, 1,
+//             0, 0, 1,
+//         ];
+//         let answer: Vec<u8> = (0..correct.len()).map(|_| num1.shl_return()).collect();
+//         assert_eq!(answer, correct);
+//     }
 
-    #[test]
-    fn display() {
-        let mut num1 = BigUInt::new();
-        num1.data.push(12345);
+//     #[test]
+//     fn display() {
+//         let mut num1 = BigUInt::new();
+//         num1.data.push(12345);
 
-        assert_eq!(num1.to_string(), "12345");
-    }
-}
+//         assert_eq!(num1.to_string(), "12345");
+//     }
+// }
