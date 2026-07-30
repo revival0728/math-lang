@@ -1,0 +1,64 @@
+test_compare_mls() = $(
+    .(import("../compare.mls"))
+
+    .(test_eq())
+    .(test_neq())
+    .(test_le())
+    .(test_ge())
+    .(test_leq())
+    .(test_geq())
+    .(test_max())
+    .(test_min())
+
+    .(println("std/compare.mls passed all tests!"))
+)
+
+test_eq() = $(
+    .(assert_eq(eq(0, 0), 0, "compare::eq() failed"))
+    .(assert_ne(eq(-1, 0), 0, "compare::eq() failed"))
+    .(assert_ne(eq(1, 0), 0, "compare::eq() failed"))
+)
+
+test_neq() = $(
+    .(assert_ne(neq(0, 0), 0, "compare::neq() failed"))
+    .(assert_eq(neq(-1, 0), 0, "compare::neq() failed"))
+    .(assert_eq(neq(1, 0), 0, "compare::neq() failed"))
+)
+
+test_le() = $(
+    .(assert_ne(le(0, 0), 0, "compare::le() failed"))
+    .(assert_eq(le(-1, 0), 0, "compare::le() failed"))
+    .(assert_ne(le(1, 0), 0, "compare::le() failed"))
+)
+
+test_ge() = $(
+    .(assert_ne(ge(0, 0), 0, "compare::ge() failed"))
+    .(assert_ne(ge(-1, 0), 0, "compare::ge() failed"))
+    .(assert_eq(ge(1, 0), 0, "compare::ge() failed"))
+)
+
+test_leq() = $(
+    .(assert_eq(leq(0, 0), 0, "compare::leq() failed"))
+    .(assert_eq(leq(-1, 0), 0, "compare::leq() failed"))
+    .(assert_ne(leq(1, 0), 0, "compare::leq() failed"))
+)
+
+test_geq() = $(
+    .(assert_eq(geq(0, 0), 0, "compare::geq() failed"))
+    .(assert_ne(geq(-1, 0), 0, "compare::geq() failed"))
+    .(assert_eq(geq(1, 0), 0, "compare::geq() failed"))
+)
+
+test_max() = $(
+    .(assert_eq(max(0, 0), 0, "compare::max() failed"))
+    .(assert_eq(max(-1, 0), 0, "compare::max() failed"))
+    .(assert_eq(max(1, 0), 1, "compare::max() failed"))
+)
+
+test_min() = $(
+    .(assert_eq(min(0, 0), 0, "compare::min() failed"))
+    .(assert_eq(min(-1, 0), -1, "compare::min() failed"))
+    .(assert_eq(min(1, 0), 0, "compare::min() failed"))
+)
+
+test_compare_mls()

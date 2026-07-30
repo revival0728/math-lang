@@ -1,0 +1,3 @@
+import("compare.mls")
+
+println("all test passed!")

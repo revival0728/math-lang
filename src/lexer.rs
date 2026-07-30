@@ -90,7 +90,13 @@ lexer! {
             lexer.state().in_comment = false;
             lexer.switch_and_return(LexerRule::Init, Token::Newline)
         },
-        _ => |lexer| lexer.continue_(),
+        _ => |lexer| {
+            if lexer.peek().is_none() {
+                lexer.switch_and_return(LexerRule::Init, Token::Newline)
+            } else {
+                lexer.continue_()
+            }
+        },
     }
 
     rule String {

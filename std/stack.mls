@@ -1,19 +1,26 @@
-# init stack with capacity
+# This is a script of data structure Stack (items with LIFO order)
+# Sequence usage of Stack
+# | TOP_POINTER | VALUE | VALUE | ... |
+
+# init Stack with capacity
 Stack(capacity) = (
     Sequence(capacity + 1)
 )
 
+# push value into Stack
 Stack_push(stk, value) = $(
     .(stk:0 = stk:0 + 1)
     .(stk:(stk:0) = value)
 )
 
+# pop value out of Stack and return value
 Stack_pop(stk) = (
     .(value = stk:(stk:0))
     .(stk:0 = stk:0 - 1)
     value
 )
 
+# get top value of Stack
 Stack_top(stk) = (
     stk:(stk:0)
 )

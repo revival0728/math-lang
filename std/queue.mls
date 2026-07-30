@@ -1,0 +1,30 @@
+# This is a script of data structure Queue (items with FIFO order)
+# The Queue is a circular queue
+# Sequence usage of Queue
+# | FRONT_POINTER | TAIL_POINTER | VALUE | VALUE | ... |
+
+# init Queue with capacity
+Queue(capacity) = (
+    .(que = Sequence(capacity + 2))
+    .(que:0 = 2)
+    .(que:1 = 2)
+    que
+)
+
+# push value into Queue
+Queue_push(que, value) = $(
+    .(que:(que:1) = value)
+    .(que:1 = (-2 + que:1 + 1 mod len(que) - 2) + 2)
+)
+
+# pop value out of Queue and return value
+Queue_pop(que) = (
+    .(value = que:(que:0))
+    .(que:0 = (-2 + que:0 + 1 mod len(que) - 2) + 2)
+    value
+)
+
+# get front value of Queue
+Queue_front(que) = (
+    que:(que:0)
+)
