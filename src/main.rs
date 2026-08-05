@@ -4,6 +4,7 @@ mod comiler;
 mod env;
 mod error;
 mod lexer;
+mod rmapi;
 mod runtime;
 mod test;
 mod var;

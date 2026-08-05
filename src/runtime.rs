@@ -46,6 +46,12 @@ impl<'input> Scope<'input> {
         new.id = id;
         new
     }
+    pub fn get_name(&self) -> &'input str {
+        self.name
+    }
+    pub fn get_id(&self) -> usize {
+        self.id
+    }
     pub fn get_var(&self, name: &'input str) -> Option<Rc<RefCell<Var>>> {
         self.var_table.get(name).cloned()
     }
@@ -212,6 +218,18 @@ impl<'input> Runtime<'input> {
             Ok(ast) => ast,
             Err(ce) => return Err(GlobalError::CE(ce)),
         };
+        match self.exec_ast(ast).err() {
+            Some(err) => return Err(err),
+            None => {}
+        };
+        if !self.out_buffer.is_empty() {
+            let output = self.out_buffer.drain(..).collect();
+            self.output.push(output);
+            self.out_buffer.clear();
+        }
+        Ok(&self.output)
+    }
+    pub fn exec_ast(&mut self, ast: &Vec<Inst<'input>>) -> Result<(), GlobalError> {
         for (idx, inst) in ast.iter().enumerate() {
             let to_print = if let &Inst::Set(_, _) = inst {
                 unsafe { PRINT_SET_INST == 1 }
@@ -232,12 +250,7 @@ impl<'input> Runtime<'input> {
                 self.output.push(out_str);
             }
         }
-        if !self.out_buffer.is_empty() {
-            let output = self.out_buffer.drain(..).collect();
-            self.output.push(output);
-            self.out_buffer.clear();
-        }
-        Ok(&self.output)
+        Ok(())
     }
     fn exec_fun(
         &mut self,
