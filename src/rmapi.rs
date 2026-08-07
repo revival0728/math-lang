@@ -3,16 +3,19 @@
 // Rust Module define example
 //
 // pub fn rust_add_i32(sapi: ScopeApi) -> RMFunRetType {
-//     let a: i32 = sapi.get_current_var("a").unwrap().try_into().unwrap();
-//     let b: i32 = sapi.get_current_var("b").unwrap().try_into().unwrap();
+//     let a: i32 = sapi.get_current_var("a").unwrap().try_into().map_err(|t| format!("expected I32 type got {} type", t))?;
+//     let b: i32 = sapi.get_current_var("b").unwrap().try_into().map_err(|t| format!("expected I32 type got {} type", t))?;
 //     let result = a + b;
-//     Some(VarApi::from(result))
+//     Ok(Some(VarApi::from(result)))
 // }
 // export! {
 //     pi = F64(3.14);
 //     add(a, b) = rust_add_i32;
 // }
+//
+// For more examples please check out src/builtin.rs
 
+#![allow(unused)]
 use crate::runtime::Fun;
 use crate::var::VarType;
 use crate::{runtime::Scope, var::Var};
@@ -79,8 +82,8 @@ pub enum RMApiType {
     I64,
     F64,
     BigNum,
-    String,
     Sequence,
+    ByteArray,
 }
 
 #[derive(Debug)]
@@ -196,8 +199,8 @@ impl VarApi {
             VarType::I64 => RMApiType::I64,
             VarType::F64 => RMApiType::F64,
             VarType::BigNum => RMApiType::BigNum,
-            VarType::None => RMApiType::String,
             VarType::Sequence => RMApiType::Sequence,
+            VarType::None => RMApiType::ByteArray,
         }
     }
 }
@@ -284,9 +287,19 @@ impl From<&str> for VarApi {
 impl TryInto<String> for VarApi {
     type Error = ();
     fn try_into(self) -> Result<String, Self::Error> {
-        let vtype = self.vtype();
-        if vtype == RMApiType::String {
+        if self.vtype() == RMApiType::ByteArray {
             Ok(self.rref.borrow().to_string())
+        } else {
+            Err(())
+        }
+    }
+}
+
+impl TryInto<Vec<u8>> for VarApi {
+    type Error = ();
+    fn try_into(self) -> Result<Vec<u8>, Self::Error> {
+        if self.vtype() == RMApiType::ByteArray {
+            Ok(self.rref.borrow().as_raw_bytes().to_vec())
         } else {
             Err(())
         }
@@ -333,8 +346,8 @@ impl std::fmt::Display for RMApiType {
                 RMApiType::I64 => "I64",
                 RMApiType::F64 => "F64",
                 RMApiType::BigNum => "BigNum",
-                RMApiType::String => "String",
                 RMApiType::Sequence => "Sequence",
+                RMApiType::ByteArray => "ByteArray",
             }
         )
     }

@@ -279,8 +279,15 @@ impl Display for Var {
                 if self.data.is_empty() {
                     write!(f, "")
                 } else {
-                    let s = str::from_utf8(&self.data).expect("runtime internal error!");
-                    write!(f, "{}", s)
+                    write!(
+                        f,
+                        "{}",
+                        match str::from_utf8(&self.data) {
+                            Ok(s) => s,
+                            Err(_) =>
+                                "<#!this None type is not a string literal and cannot be displayed!#>",
+                        }
+                    )
                 }
             }
             VarType::I32 => {

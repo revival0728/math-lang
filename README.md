@@ -248,7 +248,7 @@ it is possible to read or get ENV by function `__[ENV_name]__()`, where `[ENV_na
 - maximum stack size is not ENV, but can be configured by execution argument, by default is 64MB
 
 ## About String literal
-- string literals cannot be stored in variable, parsed as None in this language
+- string literals **can** be stored in variable, parsed as None in this language
 - use it to have better output
 - escape chars are not supported
 
