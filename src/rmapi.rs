@@ -2,7 +2,7 @@
 //
 // Rust Module define example
 //
-// pub fn rust_add_i32(sapi: ScopeApi) -> RMApiResult<Option<VarApi>> {
+// pub fn rust_add_i32(sapi: ScopeApi) -> RMFunRetType {
 //     let a: i32 = sapi.get_current_var("a").unwrap().try_into().unwrap();
 //     let b: i32 = sapi.get_current_var("b").unwrap().try_into().unwrap();
 //     let result = a + b;
@@ -37,7 +37,7 @@ macro_rules! export {
         vec![$(stringify!($arg)),*]
     };
     { @member } => { vec![] };
-    { @member $ename:ident = $ntype:ident($value:expr); $($export:tt)* } => {{
+    { @member $ename:tt = $ntype:ident($value:expr); $($export:tt)* } => {{
         let mut module = vec![ModMember::Var((stringify!($ename), Number::$ntype($value)))];
         module.append(&mut export!{ @member $($export)* });
         module
@@ -58,6 +58,7 @@ macro_rules! export {
 }
 
 pub type RMApiResult<T> = Result<T, String>;
+pub type RMFunRetType = RMApiResult<Option<VarApi>>;
 
 #[derive(Clone, Copy, Debug)]
 pub enum Number {
@@ -72,12 +73,13 @@ pub enum Number {
     F64(f64),
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd)]
 pub enum RMApiType {
     I32,
     I64,
     F64,
     BigNum,
+    String,
     Sequence,
 }
 
@@ -190,11 +192,11 @@ impl VarApi {
     }
     pub fn vtype(&self) -> RMApiType {
         match self.rref.borrow().type_ {
-            VarType::None => panic!("Rust Module API: custom module internal error!"),
             VarType::I32 => RMApiType::I32,
             VarType::I64 => RMApiType::I64,
             VarType::F64 => RMApiType::F64,
             VarType::BigNum => RMApiType::BigNum,
+            VarType::None => RMApiType::String,
             VarType::Sequence => RMApiType::Sequence,
         }
     }
@@ -205,8 +207,8 @@ macro_rules! impl_var_api_try_into {
         impl TryInto<$rtype> for VarApi {
             type Error = RMApiType;
             fn try_into(self) -> Result<$rtype, Self::Error> {
-                let vtype = self.rref.borrow().type_;
-                if vtype <= VarType::$vtype && vtype <= VarType::BigNum {
+                let vtype = self.vtype();
+                if vtype <= RMApiType::$vtype && vtype <= RMApiType::BigNum {
                     let v: $rtype = (&*self.rref.borrow()).into();
                     Ok(v)
                 } else {
@@ -269,6 +271,28 @@ impl_var_api_from_other!(u8, i32);
 impl_var_api_from_other!(u16, i32);
 impl_var_api_from_other!(u32, i64);
 
+impl From<&str> for VarApi {
+    fn from(value: &str) -> Self {
+        let mut var = Var::default();
+        var.write_data_unchecked(value.as_bytes());
+        Self {
+            rref: Rc::new(RefCell::new(var)),
+        }
+    }
+}
+
+impl TryInto<String> for VarApi {
+    type Error = ();
+    fn try_into(self) -> Result<String, Self::Error> {
+        let vtype = self.vtype();
+        if vtype == RMApiType::String {
+            Ok(self.rref.borrow().to_string())
+        } else {
+            Err(())
+        }
+    }
+}
+
 impl VarApi {
     pub fn try_into_sequence(self, sapi: &ScopeApi) -> Option<Vec<VarApi>> {
         if self.rref.borrow().type_ != VarType::Sequence {
@@ -309,6 +333,7 @@ impl std::fmt::Display for RMApiType {
                 RMApiType::I64 => "I64",
                 RMApiType::F64 => "F64",
                 RMApiType::BigNum => "BigNum",
+                RMApiType::String => "String",
                 RMApiType::Sequence => "Sequence",
             }
         )

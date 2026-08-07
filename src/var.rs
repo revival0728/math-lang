@@ -90,6 +90,12 @@ impl<'input> Var {
         // TODO: implement BigNum
         None
     }
+    pub fn write_data_unchecked(&mut self, data: &[u8]) {
+        self.data = data.to_vec();
+    }
+    pub fn as_raw_bytes(&self) -> &[u8] {
+        self.data.as_slice()
+    }
 }
 
 macro_rules! impl_from_for_var {

@@ -224,8 +224,8 @@ checkout [example](/examples/module.mls)
 | round(x) | `Rust` function |
 | exp(x) | `Rust` function |
 | log(x) | `Rust` function (`log10`) |
-| log2(x) | `Rust` function (`log2`) |
-| ln(x) | `Rust` function (`log(x, std::f64::consts::E)`) |
+| log2(x) | `Rust` function |
+| ln(x) | `Rust` function  |
 | trunc(x) | `Rust` function, return integer part of the argument |
 | cbrt(x) | `Rust` function, return cube root of the argument |
 

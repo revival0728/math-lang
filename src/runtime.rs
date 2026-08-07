@@ -139,7 +139,7 @@ impl<'input> Runtime<'input> {
                     stringify!($name),
                     Fun {
                         para_name: group_to_literal!($($para),*),
-                        data: vec![Inst::BultinFnCall(stringify!($name))],
+                        data: vec![Inst::BuiltinFnCall(stringify!($name))],
                     },
                 )
             };
@@ -191,14 +191,14 @@ impl<'input> Runtime<'input> {
             "$",
             Fun {
                 para_name: vec!["x"],
-                data: vec![Inst::BultinFnCall("$")],
+                data: vec![Inst::BuiltinFnCall("$")],
             },
         );
         runtime.builtin.set_fun(
             ".",
             Fun {
                 para_name: vec!["x"],
-                data: vec![Inst::BultinFnCall(".")],
+                data: vec![Inst::BuiltinFnCall(".")],
             },
         );
 
@@ -679,7 +679,7 @@ impl<'input> Runtime<'input> {
                 }
                 //TODO: add BigNum implemntation
             }
-            Inst::BultinFnCall(name) => {
+            Inst::BuiltinFnCall(name) => {
                 macro_rules! handle_arg_1 {
                     ($rust_fn:ident $(, $default_args:expr),*) => {{
                         let scope = self.locals.last_mut().expect("runtime internal error!");
