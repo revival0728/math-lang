@@ -2,7 +2,7 @@
 //
 // Rust Module define example
 //
-// pub fn rust_add_i32(sapi: ScopeApi) -> Option<VarApi> {
+// pub fn rust_add_i32(sapi: ScopeApi) -> RMApiResult<Option<VarApi>> {
 //     let a: i32 = sapi.get_current_var("a").unwrap().try_into().unwrap();
 //     let b: i32 = sapi.get_current_var("b").unwrap().try_into().unwrap();
 //     let result = a + b;
@@ -26,41 +26,38 @@ pub enum ModMember {
         (
             &'static str,
             Vec<&'static str>,
-            fn(ScopeApi) -> Option<VarApi>,
+            fn(ScopeApi) -> RMApiResult<Option<VarApi>>,
         ),
     ),
 }
 
-macro_rules! parse_func_args {
-    [ $($arg:ident),* $(,)? ] => {
-        vec![ $( stringify!($arg) ),* ]
-    };
-}
-
-macro_rules! export_member {
-    {} => { vec![] };
-    { $ename:ident = $ntype:ident($value:expr); $($export:tt)* } => {{
-        let mut module = vec![ModMember::Var((stringify!($ename), Number::$ntype($value)))];
-        module.append(&mut export_member!{ $($export)* });
-        module
-    }};
-    { $ename:ident($($para:ident),* $(,)?) = $rust_fn:expr; $($export:tt)* } => {{
-        let mut module = vec![ModMember::Fun((stringify!($ename), parse_func_args![$($para),*], $rust_fn))];
-        module.append(&mut export_member!{ $($export)* });
-        module
-    }};
-}
-
 #[macro_export]
 macro_rules! export {
+    [ @args $($arg:ident),* $(,)? ] => {
+        vec![$(stringify!($arg)),*]
+    };
+    { @member } => { vec![] };
+    { @member $ename:ident = $ntype:ident($value:expr); $($export:tt)* } => {{
+        let mut module = vec![ModMember::Var((stringify!($ename), Number::$ntype($value)))];
+        module.append(&mut export!{ @member $($export)* });
+        module
+    }};
+    { @member $ename:ident($($para:ident),* $(,)?) = $rust_fn:expr; $($export:tt)* } => {{
+        let mut module = vec![ModMember::Fun((stringify!($ename), export![ @args $($para),* ], $rust_fn))];
+        module.append(&mut export!{ @member $($export)* });
+        module
+    }};
+    { @member $($invalid:tt)* } => {
+        compile_error!(concat!("export! grammer error: possibly missing semicolon => ", stringify!($($invalid)*)));
+    };
     { $($export:tt)* } => {
         pub fn export_module() -> Vec<ModMember> {
-            export_member!{ $($export)* }
+            export!{ @member $($export)* }
         }
     };
 }
 
-pub type RMApiResult<T> = Result<T, ()>;
+pub type RMApiResult<T> = Result<T, String>;
 
 #[derive(Clone, Copy, Debug)]
 pub enum Number {
@@ -206,13 +203,14 @@ impl VarApi {
 macro_rules! impl_var_api_try_into {
     ($rtype:tt, $vtype:ident) => {
         impl TryInto<$rtype> for VarApi {
-            type Error = ();
+            type Error = RMApiType;
             fn try_into(self) -> Result<$rtype, Self::Error> {
-                if self.rref.borrow().type_ == VarType::$vtype {
+                let vtype = self.rref.borrow().type_;
+                if vtype <= VarType::$vtype && vtype <= VarType::BigNum {
                     let v: $rtype = (&*self.rref.borrow()).into();
                     Ok(v)
                 } else {
-                    Err(())
+                    Err(self.vtype())
                 }
             }
         }
@@ -225,14 +223,21 @@ impl_var_api_try_into!(f64, F64);
 macro_rules! impl_var_api_try_into_other {
     ($from:tt, $to:tt) => {
         impl TryInto<$to> for VarApi {
-            type Error = ();
+            type Error = RMApiType;
             fn try_into(self) -> Result<$to, Self::Error> {
+                let vtype = self.vtype();
                 let value: $from = self.try_into()?;
-                Ok(value as $to)
+                Ok($to::try_from(value).map_err(|_| vtype)?)
             }
         }
     };
 }
+impl_var_api_try_into_other!(i64, u8);
+impl_var_api_try_into_other!(i64, u16);
+impl_var_api_try_into_other!(i64, i8);
+impl_var_api_try_into_other!(i64, i16);
+impl_var_api_try_into_other!(i64, u32);
+impl_var_api_try_into_other!(i64, u64);
 
 macro_rules! impl_var_api_from {
     ($rtype:tt) => {
@@ -291,5 +296,21 @@ impl<'runtime> FunApi<'runtime> {
         Self {
             rref: Rc::clone(ref_fun),
         }
+    }
+}
+
+impl std::fmt::Display for RMApiType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                RMApiType::I32 => "I32",
+                RMApiType::I64 => "I64",
+                RMApiType::F64 => "F64",
+                RMApiType::BigNum => "BigNum",
+                RMApiType::Sequence => "Sequence",
+            }
+        )
     }
 }
