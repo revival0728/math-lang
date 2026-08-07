@@ -42,7 +42,7 @@ macro_rules! export {
         module.append(&mut export!{ @member $($export)* });
         module
     }};
-    { @member $ename:ident($($para:ident),* $(,)?) = $rust_fn:expr; $($export:tt)* } => {{
+    { @member $ename:tt($($para:ident),* $(,)?) = $rust_fn:expr; $($export:tt)* } => {{
         let mut module = vec![ModMember::Fun((stringify!($ename), export![ @args $($para),* ], $rust_fn))];
         module.append(&mut export!{ @member $($export)* });
         module
