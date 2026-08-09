@@ -34,6 +34,7 @@ pub struct Scope<'input> {
 pub struct Runtime<'input> {
     builtin: Scope<'input>,
     locals: Vec<Scope<'input>>,
+    recur: HashMap<usize, Vec<Scope<'input>>>,
     output: Vec<String>,
     work_path: PathBuf,
     module: HashMap<&'input str, &'input str>,

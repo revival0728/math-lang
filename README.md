@@ -269,3 +269,5 @@ it is possible to read or get ENV by function `__[ENV_name]__()`, where `[ENV_na
 - [ ] fix tail call optimization to recursion
 - [ ] add type(), hash()
 - [ ] add function info expression
+- [ ] add custom type support (parsed as None but bytes has meanings)
+- [ ] add rust binary module support

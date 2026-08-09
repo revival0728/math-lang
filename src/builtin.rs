@@ -40,7 +40,7 @@ macro_rules! declare_env_fn {
         pub fn $fn(sapi: ScopeApi) -> RMFunRetType {
             let x: i64 = sapi.get_current_var("x").unwrap().try_into().map_err(|t| {
                 format!(
-                    "expect arguemnt of {} to be a integer got {}",
+                    "expect arguemnt of {}(x) to be a integer but got {}",
                     stringify!($env).to_lowercase(),
                     t
                 )
@@ -69,6 +69,46 @@ declare_env_fn!(env_print_set_inst, PRINT_SET_INST, 1);
 declare_env_fn!(env_detail_depth, DETAIL_DEPTH, 1);
 declare_env_fn!(env_max_stack_depth, MAX_STACK_DEPTH, u32::MAX);
 declare_env_fn!(env_index_base, INDEX_BASE, 1);
+
+macro_rules! declare_logic_fn {
+    ($name:ident, x $logic:tt $value:literal) => {
+        pub fn $name(sapi: ScopeApi) -> RMFunRetType {
+            let x: i64 = sapi.get_current_var("x").unwrap().try_into().map_err(|t| {
+                format!(
+                    "expect argument of {}(x) to be a integer got {}",
+                    stringify!($name),
+                    t
+                )
+            })?;
+            Ok(Some(VarApi::from((x $logic $value) as i32)))
+        }
+    };
+}
+declare_logic_fn!(logic_if, x == 0);
+declare_logic_fn!(logic_else, x != 0);
+
+pub fn sign(sapi: ScopeApi) -> RMFunRetType {
+    let x: f64 = sapi
+        .get_current_var("x")
+        .unwrap()
+        .try_into()
+        .map_err(|t| format!("expect argument of sign(x) to be a number but got {}", t))?;
+    use std::cmp::Ordering;
+    let result = match x.total_cmp(&0.0) {
+        Ordering::Equal => 0,
+        Ordering::Greater => 1,
+        Ordering::Less => -1,
+    };
+    Ok(Some(VarApi::from(result)))
+}
+
+pub fn none(_sapi: ScopeApi) -> RMFunRetType {
+    Ok(Some(VarApi::none()))
+}
+
+pub fn one(_sapi: ScopeApi) -> RMFunRetType {
+    Ok(Some(VarApi::from(1)))
+}
 
 export! {
     pi = F64(PI);
@@ -99,4 +139,9 @@ export! {
     __detail_depth__(x) = env_detail_depth;
     __max_stack_depth__(x) = env_max_stack_depth;
     __index_base__(x) = env_index_base;
+    if(x) = logic_if;
+    else(x) = logic_else;
+    sign(x) = sign;
+    $(x) = none;
+    .(x) = one;
 }

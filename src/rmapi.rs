@@ -16,23 +16,15 @@
 // For more examples please check out src/builtin.rs
 
 #![allow(unused)]
-use crate::runtime::Fun;
-use crate::var::VarType;
-use crate::{runtime::Scope, var::Var};
+use crate::runtime::{Fun, Scope};
+use crate::var::{Var, VarType};
 use std::cell::RefCell;
 use std::convert::TryInto;
 use std::rc::Rc;
 
-pub enum ModMember {
-    Var((&'static str, Number)),
-    Fun(
-        (
-            &'static str,
-            Vec<&'static str>,
-            fn(ScopeApi) -> RMApiResult<Option<VarApi>>,
-        ),
-    ),
-}
+pub type RMFunResult<T> = Result<T, String>;
+pub type RMFunRetType = RMFunResult<Option<VarApi>>;
+pub type RMFunPtr = fn(ScopeApi) -> RMFunRetType;
 
 #[macro_export]
 macro_rules! export {
@@ -60,8 +52,16 @@ macro_rules! export {
     };
 }
 
-pub type RMApiResult<T> = Result<T, String>;
-pub type RMFunRetType = RMApiResult<Option<VarApi>>;
+pub enum ModMember {
+    Var((&'static str, Number)),
+    Fun(
+        (
+            &'static str,
+            Vec<&'static str>,
+            fn(ScopeApi) -> RMFunRetType,
+        ),
+    ),
+}
 
 #[derive(Clone, Copy, Debug)]
 pub enum Number {
@@ -180,6 +180,11 @@ impl VarApi {
             rref: Rc::clone(ref_var),
         }
     }
+    pub fn none() -> Self {
+        Self {
+            rref: Rc::new(RefCell::new(Var::none())),
+        }
+    }
     pub fn set(&mut self, value: Number) {
         match value {
             Number::U8(num) => *self.rref.borrow_mut() = Var::from(num as i32),
@@ -202,6 +207,11 @@ impl VarApi {
             VarType::Sequence => RMApiType::Sequence,
             VarType::None => RMApiType::ByteArray,
         }
+    }
+    pub fn set_bytes(&mut self, bytes: &[u8]) {
+        let mut mref = self.rref.borrow_mut();
+        mref.type_ = VarType::None;
+        mref.write_data_unchecked(bytes);
     }
 }
 
