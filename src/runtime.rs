@@ -34,7 +34,7 @@ pub struct Scope<'input> {
 pub struct Runtime<'input> {
     builtin: Scope<'input>,
     locals: Vec<Scope<'input>>,
-    recur: HashMap<usize, Vec<Scope<'input>>>,
+    recur: HashMap<&'input str, Vec<Scope<'input>>>,
     output: Vec<String>,
     work_path: PathBuf,
     module: HashMap<&'input str, &'input str>,
@@ -343,9 +343,19 @@ impl<'input> Runtime<'input> {
                     let value = (*value.borrow()).clone();
                     sub_local.add_var(pname, value);
                 }
+                let mut is_recur = false;
+                if self.locals.last().unwrap().name == sub_local.name {
+                    let entry = self.recur.entry(sub_local.name);
+                    entry.or_default().push(self.locals.pop().unwrap());
+                    is_recur = true;
+                }
                 self.locals.push(sub_local);
                 let rval = self.exec_fun(&fun.borrow(), line)?;
                 let fun_scope = self.locals.pop().unwrap();
+                if is_recur {
+                    let prv_recur = self.recur.entry(fun_scope.name).or_default().pop().unwrap();
+                    self.locals.push(prv_recur);
+                }
                 let cur_scope_index = self.locals.len() - 1;
                 let cur_scope = self.locals.last_mut().unwrap();
                 if rval.borrow().type_ == VarType::Sequence {

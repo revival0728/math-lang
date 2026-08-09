@@ -254,16 +254,10 @@ it is possible to read or get ENV by function `__[ENV_name]__()`, where `[ENV_na
 
 ## Development
 ### Main Changes
-- added type function int32()
-- added builtin constants true and false
-- added control functions abort(), assert_eq() and assert_ne()
-
-### Fixed Bugs
-- passing variable references into function instead of values
-- accessing parent Scope variable while doing recursion
-- file ends with comment causes CE::("invalid token")
+- massively improved recursion performance
 
 ### TODO
+- [ ] Change Cargo.toml version
 - [ ] implement BigNum, fix i64 and f64 overflow problem (rarely happened)
 - [ ] improve error message
 - [ ] fix tail call optimization to recursion
@@ -271,3 +265,4 @@ it is possible to read or get ENV by function `__[ENV_name]__()`, where `[ENV_na
 - [ ] add function info expression
 - [ ] add custom type support (parsed as None but bytes has meanings)
 - [ ] add rust binary module support
+- [ ] fix cannot access parent scope with same function name (?)
