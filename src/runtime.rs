@@ -1242,20 +1242,33 @@ mod test {
 
     #[test]
     fn sequence() {
-        let source = examples::sequence();
-        let mut runtime = Runtime::new();
-        let output = runtime.execute(&source).unwrap();
-        let correct = vec![
-            "<Sequence of Scope 0 with length 3 at 0x0000000000000000>",
-            "0",
-            "1",
-            "1",
-            "fib(10) = 55",
-        ]
-        .iter()
-        .map(|s| s.to_string())
-        .collect::<Vec<String>>();
-        assert_eq!(output, &correct);
+        // too large for default RUST_MIN_STACK
+        // wrapping test in custom thread
+        use std::thread;
+        let builder = thread::Builder::new()
+            .name("runtime::test::sequence".into())
+            .stack_size(3 * 1024 * 1024);
+
+        let cli = builder
+            .spawn(move || {
+                let source = examples::sequence();
+                let mut runtime = Runtime::new();
+                let output = runtime.execute(&source).unwrap();
+                let correct = vec![
+                    "<Sequence of Scope 0 with length 3 at 0x0000000000000000>",
+                    "0",
+                    "1",
+                    "1",
+                    "fib(10) = 55",
+                ]
+                .iter()
+                .map(|s| s.to_string())
+                .collect::<Vec<String>>();
+                assert_eq!(output, &correct);
+            })
+            .unwrap();
+
+        cli.join().unwrap();
     }
 
     #[test]
