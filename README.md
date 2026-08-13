@@ -266,3 +266,5 @@ it is possible to read or get ENV by function `__[ENV_name]__()`, where `[ENV_na
 - [ ] add custom type support (parsed as None but bytes has meanings)
 - [ ] add rust binary module support
 - [ ] fix cannot access parent scope with same function name (?)
+- [ ] flatten inst, flat Inst::Mul with new inst Inst::Jump(cond, dest)
+- [ ] new operator for declaring variable at current scope (or cannot access global from functions)
