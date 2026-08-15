@@ -1,5 +1,6 @@
 use crate::comiler::{Compiler, Expr, Inst};
 use crate::error::{GlobalError, RuntimeError};
+use crate::module;
 use crate::rmapi::{ModMember, Number, RMExport, RMFunPtr, ScopeApi};
 use crate::var::{Var, VarType};
 use crate::{builtin, env::*};
@@ -26,13 +27,17 @@ pub struct Scope<'input> {
 }
 
 #[derive(Debug, Default, Clone)]
-pub struct Runtime<'input> {
+pub struct Runtime<'input, ModSystem>
+where
+    ModSystem: module::ModSystem,
+{
     builtin: Scope<'input>,
     locals: Vec<Scope<'input>>,
     recur: Vec<Scope<'input>>,
     rustfn: Vec<RMFunPtr>,
     output: Vec<String>,
     work_path: PathBuf,
+    msys: ModSystem,
     module: HashMap<&'input str, &'input str>,
     out_buffer: String,
     max_scope_id: usize,
@@ -106,7 +111,10 @@ impl<'input> Fun<'input> {
     }
 }
 
-impl<'input> Runtime<'input> {
+impl<'input, ModSystem> Runtime<'input, ModSystem>
+where
+    ModSystem: module::ModSystem,
+{
     pub fn new() -> Self {
         let mut runtime = Self::default();
 
@@ -168,7 +176,7 @@ impl<'input> Runtime<'input> {
     ) -> Result<(), RuntimeError> {
         let line = exec_line.unwrap_or(0);
         let mod_name = mod_name.to_string().leak();
-        let source = match std::fs::read_to_string(path) {
+        let source = match self.msys.read(path) {
             Ok(s) => s,
             Err(_) => {
                 return Err(RuntimeError {
@@ -206,7 +214,7 @@ impl<'input> Runtime<'input> {
                     let var_type = var_value.borrow().type_;
                     match var_type {
                         VarType::Sequence => {
-                            Runtime::sequence_move_data(
+                            Runtime::<ModSystem>::sequence_move_data(
                                 mod_scope,
                                 prv_scope,
                                 prv_scope_index,
@@ -406,7 +414,12 @@ impl<'input> Runtime<'input> {
                 let cur_scope_index = self.locals.len() - 1;
                 let cur_scope = self.locals.last_mut().unwrap();
                 if rval.borrow().type_ == VarType::Sequence {
-                    Runtime::sequence_move_data(&fun_scope, cur_scope, cur_scope_index, &rval);
+                    Runtime::<ModSystem>::sequence_move_data(
+                        &fun_scope,
+                        cur_scope,
+                        cur_scope_index,
+                        &rval,
+                    );
                 }
                 Ok(rval)
             }
@@ -828,7 +841,7 @@ impl<'input> Runtime<'input> {
         for (fi, ti) in (from_ptr.0..from_ptr.1).zip(to_ptr.0..to_ptr.1) {
             to.heap[ti] = Rc::clone(&from.heap[fi]);
             if from.heap[fi].borrow().type_ == VarType::Sequence {
-                Runtime::sequence_move_data(from, to, to_index, &from.heap[fi]);
+                Runtime::<ModSystem>::sequence_move_data(from, to, to_index, &from.heap[fi]);
             }
         }
         let to_id = to.id;
@@ -869,12 +882,15 @@ impl<'input> Runtime<'input> {
 #[cfg(test)]
 mod test {
     use super::Runtime;
-    use crate::test::{examples, simple_expr};
+    use crate::{
+        module::FileSystem,
+        test::{examples, simple_expr},
+    };
 
     #[test]
     fn module() {
         let source = examples::module();
-        let mut runtime = Runtime::new();
+        let mut runtime = Runtime::<FileSystem>::new();
         runtime.work_path = std::path::PathBuf::new().join("examples");
         let output = runtime.execute(&source).unwrap();
         let correct = vec![
@@ -892,7 +908,7 @@ mod test {
 
     #[test]
     fn print_sequence() {
-        let mut runtime = Runtime::new();
+        let mut runtime = Runtime::<FileSystem>::new();
         runtime.execute("seq = Sequence(3)").unwrap();
         runtime.execute("seq:0 = Sequence(3)").unwrap();
         runtime.execute("print(seq)").unwrap();
@@ -920,7 +936,7 @@ mod test {
         let cli = builder
             .spawn(move || {
                 let source = examples::sequence();
-                let mut runtime = Runtime::new();
+                let mut runtime = Runtime::<FileSystem>::new();
                 let output = runtime.execute(&source).unwrap();
                 let correct = vec![
                     "<Sequence of Scope 0 with length 3 at 0x0000000000000000>",
@@ -941,7 +957,7 @@ mod test {
 
     #[test]
     fn inst_mod_1() {
-        let mut runtime = Runtime::new();
+        let mut runtime = Runtime::<FileSystem>::new();
         runtime.execute("10 mod 2").unwrap();
         runtime.execute("10 mod 3").unwrap();
         runtime.execute("10 mod -3").unwrap();
@@ -957,7 +973,7 @@ mod test {
 
     #[test]
     fn inst_mod_2() {
-        let mut runtime = Runtime::new();
+        let mut runtime = Runtime::<FileSystem>::new();
         runtime
             .execute("ans = ((1 * 2 + 3) * 4) + 5 * 6 + 7 mod 2")
             .unwrap();
@@ -974,7 +990,7 @@ mod test {
 
     #[test]
     fn simple_one_plus_one() {
-        let mut runtime = Runtime::new();
+        let mut runtime = Runtime::<FileSystem>::new();
         let output = runtime.execute("1 + 1").unwrap();
         let correct = vec!["2".to_owned()];
         assert_eq!(output, &correct);
@@ -982,7 +998,7 @@ mod test {
 
     #[test]
     fn simple_expr_1() {
-        let mut runtime = Runtime::new();
+        let mut runtime = Runtime::<FileSystem>::new();
         runtime.execute("i = 1").unwrap();
         let output = runtime.execute(simple_expr::expr_1()).unwrap();
         let correct = vec!["1", "2"]
@@ -994,7 +1010,7 @@ mod test {
 
     #[test]
     fn simple_expr_2() {
-        let mut runtime = Runtime::new();
+        let mut runtime = Runtime::<FileSystem>::new();
         runtime.execute("i = 1").unwrap();
         runtime.execute("b = 2").unwrap();
         let output = runtime.execute(simple_expr::expr_2()).unwrap();
@@ -1007,7 +1023,7 @@ mod test {
 
     #[test]
     fn simple_expr_3() {
-        let mut runtime = Runtime::new();
+        let mut runtime = Runtime::<FileSystem>::new();
         runtime.execute("i = 1").unwrap();
         runtime.execute("a = 2").unwrap();
         runtime.execute("b = 3").unwrap();
@@ -1022,7 +1038,7 @@ mod test {
     #[test]
     fn basic() {
         let source = examples::basic();
-        let mut runtime = Runtime::new();
+        let mut runtime = Runtime::<FileSystem>::new();
         let output = runtime.execute(&source).unwrap();
         let correct = vec!["57", "1235", "1235"]
             .iter()
@@ -1034,7 +1050,7 @@ mod test {
     #[test]
     fn cosine_law() {
         let source = examples::cosine_law();
-        let mut runtime = Runtime::new();
+        let mut runtime = Runtime::<FileSystem>::new();
         let output = runtime.execute(&source).unwrap();
         let correct = vec!["7", "7", "7", "0.5000000", "60.0000000", "60.0000000"]
             .iter()
@@ -1046,7 +1062,7 @@ mod test {
     #[test]
     fn fib() {
         let source = examples::fib();
-        let mut runtime = Runtime::new();
+        let mut runtime = Runtime::<FileSystem>::new();
         let output = runtime.execute(&source).unwrap();
         let correct = vec!["1", "1", "2", "3", "5", "55"]
             .iter()
@@ -1057,7 +1073,7 @@ mod test {
 
     #[test]
     fn bug_1() {
-        let mut runtime = Runtime::new();
+        let mut runtime = Runtime::<FileSystem>::new();
         runtime.execute("()()").unwrap();
         let output = &runtime.output;
         let correct = vec!["0"]
@@ -1069,7 +1085,7 @@ mod test {
 
     #[test]
     fn bug_2() {
-        let mut runtime = Runtime::new();
+        let mut runtime = Runtime::<FileSystem>::new();
         runtime.execute("sum(a, b) = a + b").unwrap();
         runtime.execute("sin(sum(1, -1))").unwrap();
         let output = &runtime.output;

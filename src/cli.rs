@@ -1,4 +1,5 @@
 use crate::env::*;
+use crate::module::FileSystem;
 use crate::runtime::Runtime;
 use clap::Parser;
 use std::io;
@@ -42,7 +43,7 @@ pub struct CLI<'cli> {
     info: String,
     line_prefix: String,
     input: Vec<Box<str>>,
-    runtime: Runtime<'cli>,
+    runtime: Runtime<'cli, FileSystem>,
     cur_output: usize,
 }
 
