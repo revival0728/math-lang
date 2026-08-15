@@ -86,6 +86,14 @@ pub enum RMApiType {
     ByteArray,
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct RMHeapInfo {
+    pub sindex: usize,
+    pub sid: usize,
+    pub mstart: usize,
+    pub mend: usize,
+}
+
 #[derive(Debug)]
 pub struct ScopeApi<'runtime, 'call> {
     builtin: &'call mut Scope<'runtime>,
@@ -172,6 +180,38 @@ impl<'runtime, 'call> ScopeApi<'runtime, 'call> {
     pub fn get_builtin_fun(&self, name: &'runtime str) -> Option<FunApi<'runtime>> {
         self.builtin.get_fun(name).map(|fun| FunApi::new(&fun))
     }
+    pub fn allocate(&mut self, len: usize) -> RMHeapInfo {
+        let sindex = self.locals.len() - 1;
+        let sid = self.locals[sindex].get_id();
+        let (mstart, mend) = self.locals[sindex].add_arr(len);
+        RMHeapInfo {
+            sindex,
+            sid,
+            mstart,
+            mend,
+        }
+    }
+    pub fn var_eq(&self, lhs: &VarApi, rhs: &VarApi) -> bool {
+        let lhsb = lhs.rref.borrow();
+        let rhsb = rhs.rref.borrow();
+        if lhsb.type_ != rhsb.type_ {
+            return false;
+        }
+        if lhsb.type_ == rhsb.type_ && lhsb.type_ != VarType::Sequence {
+            lhsb.as_raw_bytes() == rhsb.as_raw_bytes()
+        } else {
+            let lheap = lhs.get_heap_info().unwrap();
+            let rheap = rhs.get_heap_info().unwrap();
+            for (li, ri) in (lheap.mstart..lheap.mend).zip(rheap.mstart..rheap.mend) {
+                let l = VarApi::new(&self.locals[lheap.sindex].get_heap(li));
+                let r = VarApi::new(&self.locals[rheap.sindex].get_heap(ri));
+                if !self.var_eq(&l, &r) {
+                    return false;
+                }
+            }
+            true
+        }
+    }
 }
 
 impl VarApi {
@@ -212,6 +252,20 @@ impl VarApi {
         let mut mref = self.rref.borrow_mut();
         mref.type_ = VarType::None;
         mref.write_data_unchecked(bytes);
+    }
+    pub fn get_heap_info(&self) -> Result<RMHeapInfo, RMApiType> {
+        let var = self.rref.borrow();
+        if var.type_ != VarType::Sequence {
+            return Err(self.vtype());
+        }
+        let (sindex, sid) = var.get_scope();
+        let (mstart, mend) = var.get_boundary();
+        Ok(RMHeapInfo {
+            sindex,
+            sid,
+            mstart,
+            mend,
+        })
     }
 }
 
@@ -295,23 +349,32 @@ impl From<&str> for VarApi {
 }
 
 impl TryInto<String> for VarApi {
-    type Error = ();
+    type Error = RMApiType;
     fn try_into(self) -> Result<String, Self::Error> {
         if self.vtype() == RMApiType::ByteArray {
             Ok(self.rref.borrow().to_string())
         } else {
-            Err(())
+            Err(self.vtype())
         }
     }
 }
 
 impl TryInto<Vec<u8>> for VarApi {
-    type Error = ();
+    type Error = RMApiType;
     fn try_into(self) -> Result<Vec<u8>, Self::Error> {
         if self.vtype() == RMApiType::ByteArray {
             Ok(self.rref.borrow().as_raw_bytes().to_vec())
         } else {
-            Err(())
+            Err(self.vtype())
+        }
+    }
+}
+
+impl From<RMHeapInfo> for VarApi {
+    fn from(value: RMHeapInfo) -> Self {
+        let var = Var::new_sequence((value.mstart, value.mend), (value.sindex, value.sid));
+        Self {
+            rref: Rc::new(RefCell::new(var)),
         }
     }
 }
