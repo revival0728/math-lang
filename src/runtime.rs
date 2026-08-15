@@ -1,18 +1,13 @@
 use crate::comiler::{Compiler, Expr, Inst};
-use crate::env::*;
 use crate::error::{GlobalError, RuntimeError};
+use crate::rmapi::{ModMember, Number, RMExport, RMFunPtr, ScopeApi};
 use crate::var::{Var, VarType};
+use crate::{builtin, env::*};
 use std::cell::RefCell;
-use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::convert::Into;
 use std::path::PathBuf;
 use std::rc::Rc;
-
-// TODO: seperate RuntimeFnCall from BuiltinFnCall (import, print, println)
-
-const PI: f64 = std::f64::consts::PI;
-const E: f64 = std::f64::consts::E;
 
 #[derive(Debug, Clone, Default)]
 pub struct Fun<'input> {
@@ -35,6 +30,7 @@ pub struct Runtime<'input> {
     builtin: Scope<'input>,
     locals: Vec<Scope<'input>>,
     recur: Vec<Scope<'input>>,
+    rustfn: Vec<RMFunPtr>,
     output: Vec<String>,
     work_path: PathBuf,
     module: HashMap<&'input str, &'input str>,
@@ -118,93 +114,32 @@ impl<'input> Runtime<'input> {
         runtime.locals = Vec::with_capacity(unsafe { MAX_STACK_DEPTH + 1 } as usize);
         runtime.recur = Vec::with_capacity(unsafe { MAX_STACK_DEPTH + 1 } as usize);
 
-        runtime.builtin.name = "__builtin__";
-        // add builtin constant
-        runtime.builtin.add_var("pi", Var::from(PI));
-        runtime.builtin.add_var("e", Var::from(E));
-        runtime.builtin.add_var("true", Var::from(0));
-        runtime.builtin.add_var("false", Var::from(1));
-        runtime.builtin.add_var("0", Var::from(0));
-        runtime.builtin.add_var("1", Var::from(1));
-        runtime
-            .builtin
-            .add_var("None", Var::from_string(String::new()));
-
         // add builtin functions
-        // NOTE: need to handle exec_inst()::BuiltinFnCall(_)
-        macro_rules! group_to_literal {
+        runtime.builtin.name = "__builtin__";
+        // add runtime functions
+        // NOTE: need to handle exec_inst()::RuntimeCall(_)
+        macro_rules! parse_runtime_args {
             ( $($arg:ident),* $(,)? ) => {
                 vec![ $( stringify!($arg) ),* ]
             };
         }
-        macro_rules! add_builtin_fn {
+        macro_rules! add_runtime_fn {
             ($name:ident($($para:ident),*)) => {
                 runtime.builtin.set_fun(
                     stringify!($name),
                     Fun {
-                        para_name: group_to_literal!($($para),*),
-                        data: vec![Inst::BuiltinFnCall(stringify!($name))],
+                        para_name: parse_runtime_args!($($para),*),
+                        data: vec![Inst::RuntimeFnCall(stringify!($name))],
                     },
                 )
             };
         }
-        // output functions
-        add_builtin_fn! { print(x) };
-        add_builtin_fn! { println(x) };
-        // math functions
-        add_builtin_fn! { sin(x) };
-        add_builtin_fn! { cos(x) };
-        add_builtin_fn! { tan(x) };
-        add_builtin_fn! { asin(x) };
-        add_builtin_fn! { acos(x) };
-        add_builtin_fn! { atan(x) };
-        add_builtin_fn! { abs(x) };
-        add_builtin_fn! { sqrt(x) };
-        add_builtin_fn! { ceil(x) };
-        add_builtin_fn! { floor(x) };
-        add_builtin_fn! { round(x) };
-        add_builtin_fn! { exp(x) };
-        add_builtin_fn! { log(x) };
-        add_builtin_fn! { log2(x) };
-        add_builtin_fn! { ln(x) };
-        add_builtin_fn! { trunc(x) };
-        add_builtin_fn! { cbrt(x) };
-        // env functions
-        add_builtin_fn! { __precision__(x) }
-        add_builtin_fn! { __detail_depth__(x) }
-        add_builtin_fn! { __max_stack_depth__(x) }
-        add_builtin_fn! { __print_set_inst__(x) }
-        add_builtin_fn! { __index_base__(x) }
-        // logic functions
-        add_builtin_fn! { if(x) }
-        add_builtin_fn! { else(x) }
-        add_builtin_fn! { sign(x) }
-        // type functions
-        add_builtin_fn! { int32(x) }
-        // sequence relative functions
-        add_builtin_fn! { Sequence(len) }
-        add_builtin_fn! { len(seq) }
-        // module relative functions
-        add_builtin_fn! { import(__module__) }
-        // control functions
-        add_builtin_fn! { abort(msg) }
-        add_builtin_fn! { assert_eq(lhs, rhs, msg) }
-        add_builtin_fn! { assert_ne(lhs, rhs, msg) }
-        // special functions
-        runtime.builtin.set_fun(
-            "$",
-            Fun {
-                para_name: vec!["x"],
-                data: vec![Inst::BuiltinFnCall("$")],
-            },
-        );
-        runtime.builtin.set_fun(
-            ".",
-            Fun {
-                para_name: vec!["x"],
-                data: vec![Inst::BuiltinFnCall(".")],
-            },
-        );
+        add_runtime_fn! { print(x) }
+        add_runtime_fn! { println(x) }
+        add_runtime_fn! { import(__module__) }
+        // add builtin Rust functions
+        let builtin = builtin::export_module();
+        runtime.import_builtin(&builtin);
 
         // add global scope
         let mut global = Scope::new("__global__", runtime.next_scope_id());
@@ -215,6 +150,119 @@ impl<'input> Runtime<'input> {
     }
     pub fn set_work_path(&mut self, path: PathBuf) {
         self.work_path = path;
+    }
+    pub fn print(&mut self, string: &str) {
+        self.out_buffer.push_str(&string);
+    }
+    pub fn println(&mut self, string: &str) {
+        self.out_buffer.push_str(&string);
+        let output = self.out_buffer.drain(..).collect();
+        self.output.push(output);
+        self.out_buffer.clear();
+    }
+    pub fn import_mls(
+        &mut self,
+        mod_name: &str,
+        path: PathBuf,
+        exec_line: Option<usize>,
+    ) -> Result<(), RuntimeError> {
+        let line = exec_line.unwrap_or(0);
+        let mod_name = mod_name.to_string().leak();
+        let source = match std::fs::read_to_string(path) {
+            Ok(s) => s,
+            Err(_) => {
+                return Err(RuntimeError {
+                    line,
+                    msg: format!("module {} does not exist", mod_name),
+                });
+            }
+        };
+        if self.module.contains_key(mod_name) {
+            return Ok(());
+        }
+        let source = source.leak();
+        self.module.insert(mod_name, source);
+        let last_output = self.output.len();
+        match self.execute(source) {
+            Ok(_) => {
+                // do actual import
+                let split_index = self.locals.len() - 1;
+                let prv_scope_index = self.locals.len() - 2;
+                let (prv_scope, mod_scope) = self.locals.split_at_mut(split_index);
+                let prv_scope = prv_scope.last_mut().unwrap();
+                let mod_scope = mod_scope.last_mut().unwrap();
+                // do variable
+                for (var_name, var_value) in mod_scope.var_table.iter() {
+                    if var_name == &"__module__" {
+                        continue;
+                    }
+                    // FIXME: check will not work, module overwite value while executing
+                    if prv_scope.has_var(var_name) {
+                        return Err(RuntimeError {
+                            line,
+                            msg: format!("duplicate variable {} in module {}", var_name, mod_name),
+                        });
+                    }
+                    let var_type = var_value.borrow().type_;
+                    match var_type {
+                        VarType::Sequence => {
+                            Runtime::sequence_move_data(
+                                mod_scope,
+                                prv_scope,
+                                prv_scope_index,
+                                var_value,
+                            );
+                            prv_scope.add_ref_var(var_name, Rc::clone(var_value));
+                        }
+                        _ => {
+                            prv_scope.add_ref_var(var_name, Rc::clone(var_value));
+                        }
+                    }
+                }
+                // do function
+                for (fun_name, fun_value) in mod_scope.fun_table.iter() {
+                    if prv_scope.has_fun(fun_name) {
+                        return Err(RuntimeError {
+                            line,
+                            msg: format!("duplicate function {} in module {}", fun_name, mod_name),
+                        });
+                    }
+                    prv_scope.add_ref_fun(fun_name, Rc::clone(fun_value));
+                }
+            }
+            Err(err) => {
+                return Err(RuntimeError {
+                    line,
+                    msg: format!("\n\tImport Error:\n\t\t{}", err.no_loc_info()),
+                });
+            }
+        }
+        // clear module output
+        self.output.drain(last_output..);
+        Ok(())
+    }
+    pub fn import_builtin(&mut self, export: &RMExport) {
+        for member in export {
+            match member {
+                ModMember::Var((name, value)) => match *value {
+                    Number::U8(num) => self.builtin.add_var(name, Var::from(num as i32)),
+                    Number::U16(num) => self.builtin.add_var(name, Var::from(num as i32)),
+                    Number::U32(num) => self.builtin.add_var(name, Var::from(num as i64)),
+                    Number::I8(num) => self.builtin.add_var(name, Var::from(num as i32)),
+                    Number::I16(num) => self.builtin.add_var(name, Var::from(num as i32)),
+                    Number::I32(num) => self.builtin.add_var(name, Var::from(num)),
+                    Number::I64(num) => self.builtin.add_var(name, Var::from(num)),
+                    Number::F32(num) => self.builtin.add_var(name, Var::from(num as f64)),
+                    Number::F64(num) => self.builtin.add_var(name, Var::from(num)),
+                },
+                ModMember::Fun((name, paras, rfn)) => {
+                    let mut fun = Fun::new(paras.clone());
+                    fun.push_inst(Inst::RustFnCall(self.rustfn.len()));
+                    self.builtin.add_ref_fun(name, Rc::new(RefCell::new(fun)));
+                    self.rustfn.push(*rfn);
+                }
+            }
+        }
     }
     pub fn execute(&mut self, source: &'input str) -> Result<&Vec<String>, GlobalError> {
         let mut compiler = Compiler::new(source);
@@ -691,461 +739,82 @@ impl<'input> Runtime<'input> {
                 }
                 //TODO: add BigNum implemntation
             }
-            Inst::BuiltinFnCall(name) => {
-                macro_rules! handle_arg_1 {
-                    ($rust_fn:ident $(, $default_args:expr),*) => {{
-                        let scope = self.locals.last_mut().expect("runtime internal error!");
-                        let Some(x) = scope.get_var("x") else {
-                            panic!("runtime internal error!")
-                        };
-                        check_none!(x);
-                        check_is_num!(x);
-                        if x.borrow().type_ <= VarType::F64 {
-                            let x: f64 = (&*x.borrow()).into();
-                            Ok(Rc::new(RefCell::new(Var::from(x.$rust_fn($($default_args),*)))))
-                        } else {
-                            //TODO: add BigNum implemntation
-                            todo!("add BigNum implementation")
-                        }
-                    }};
+            Inst::RustFnCall(id) => {
+                let sapi = ScopeApi::new(&mut self.builtin, &mut self.locals);
+                let rfn = self.rustfn[*id];
+                match rfn(sapi) {
+                    Ok(vapi) => Ok(vapi.map_or(Rc::new(RefCell::new(Var::none())), |vapi| {
+                        vapi.into_innter()
+                    })),
+                    Err(msg) => Err(RuntimeError { line, msg }),
                 }
-                macro_rules! handle_integer_env_fun {
-                    ($env_var:ident, $limit:expr) => {{
-                        let scope = self.locals.last_mut().expect("runtime internal error!");
-                        if let Some(x) = scope.get_var("x") {
-                            check_none!(x);
-                            check_is_num!(x);
-                            if x.borrow().type_ >= VarType::F64 {
-                                return Err(RuntimeError {
-                                    line,
-                                    msg: format!(
-                                        "cannot config {} with float number",
-                                        stringify!($env_var)
-                                    ),
-                                });
-                            }
-                            // NOTE: will break on 128 bit target?
-                            let value: i32 = (&*x.borrow()).into();
-                            let value: u32 = match value.try_into() {
-                                Ok(v) => v,
-                                Err(_) => {
-                                    return Err(RuntimeError {
-                                        line,
-                                        msg: format!(
-                                            "cannot config {} with negative number",
-                                            stringify!($env_var)
-                                        ),
-                                    });
-                                }
-                            };
-                            if value > $limit {
-                                return Err(RuntimeError {
-                                    line,
-                                    msg: format!(
-                                        "env({}) must less than {}",
-                                        stringify!($env_var),
-                                        $limit
-                                    ),
-                                });
-                            }
-                            unsafe {
-                                $env_var = value;
-                                Ok(Rc::new(RefCell::new(Var::from($env_var as i64))))
-                            }
-                        } else {
-                            // NOTE: will break on 128 bit target?
-                            unsafe { Ok(Rc::new(RefCell::new(Var::from($env_var as i64)))) }
-                        }
-                    }};
+            }
+            Inst::RuntimeFnCall(name) => match name {
+                &"print" => {
+                    let scope = self.locals.last_mut().expect("runtime internal error!");
+                    let Some(x) = scope.get_var("x") else {
+                        panic!("runtime internal error!")
+                    };
+                    let out = match x.borrow().type_ {
+                        VarType::Sequence => self.sequence_to_string(Rc::clone(&x), line)?,
+                        _ => x.borrow().to_string(),
+                    };
+                    self.print(&out);
+                    Ok(Rc::new(RefCell::new(Var::none())))
                 }
-                macro_rules! handle_logic_fun {
-                    (x $logic_oper:tt $stand:literal) => {{
-                        let scope = self.locals.last_mut().expect("runtime internal error!");
-                        let Some(x) = scope.get_var("x") else {
-                            panic!("runtime internal error!")
-                        };
-                        check_none!(x);
-                        check_is_num!(x);
-                        if x.borrow().type_ > VarType::I64 {
-                            return Err(RuntimeError {
-                                line,
-                                msg: format!("logic functions only accepts integer as argument"),
-                            });
-                        }
-                        let x: i64 = (&*x.borrow()).into();
-                        let result = (x $logic_oper $stand) as i32;
-                        Ok(Rc::new(RefCell::new(Var::from(result))))
-                    }};
+                &"println" => {
+                    let scope = self.locals.last_mut().expect("runtime internal error!");
+                    let Some(x) = scope.get_var("x") else {
+                        panic!("runtime internal error!")
+                    };
+                    let out = match x.borrow().type_ {
+                        VarType::Sequence => self.sequence_to_string(Rc::clone(&x), line)?,
+                        _ => x.borrow().to_string(),
+                    };
+                    self.println(&out);
+                    Ok(Rc::new(RefCell::new(Var::none())))
                 }
-                macro_rules! handle_special_fun {
-                    ($value:expr) => {{ Ok(self.builtin.get_var(stringify!($value)).unwrap()) }};
-                }
-                match name {
-                    &"sin" => handle_arg_1!(sin),
-                    &"cos" => handle_arg_1!(cos),
-                    &"tan" => handle_arg_1!(tan),
-                    &"asin" => handle_arg_1!(asin),
-                    &"acos" => handle_arg_1!(acos),
-                    &"atan" => handle_arg_1!(atan),
-                    &"abs" => handle_arg_1!(abs),
-                    &"sqrt" => handle_arg_1!(sqrt),
-                    &"ceil" => handle_arg_1!(ceil),
-                    &"floor" => handle_arg_1!(floor),
-                    &"round" => handle_arg_1!(round),
-                    &"exp" => handle_arg_1!(exp),
-                    &"log" => handle_arg_1!(log10),
-                    &"log2" => handle_arg_1!(log2),
-                    &"ln" => handle_arg_1!(log, E),
-                    &"trunc" => handle_arg_1!(trunc),
-                    &"cbrt" => handle_arg_1!(cbrt),
-                    &"__precision__" => handle_integer_env_fun!(PRECISION, 15),
-                    &"__detail_depth__" => handle_integer_env_fun!(DETAIL_DEPTH, 1),
-                    &"__max_stack_depth__" => handle_integer_env_fun!(MAX_STACK_DEPTH, u32::MAX),
-                    &"__print_set_inst__" => handle_integer_env_fun!(PRINT_SET_INST, 1),
-                    &"__index_base__" => handle_integer_env_fun!(INDEX_BASE, 1),
-                    &"if" => handle_logic_fun!(x == 0),
-                    &"else" => handle_logic_fun!(x != 0),
-                    &"sign" => {
-                        let scope = self.locals.last_mut().expect("runtime internal error!");
-                        let Some(x) = scope.get_var("x") else {
-                            panic!("runtime internal error!")
-                        };
-                        check_none!(x);
-                        let x: f64 = (&*x.borrow()).into();
-                        let result = match x.total_cmp(&0.0) {
-                            Ordering::Equal => 0,
-                            Ordering::Greater => 1,
-                            Ordering::Less => -1,
-                        };
-                        Ok(Rc::new(RefCell::new(Var::from(result))))
-                    }
-                    &"$" => handle_special_fun!(None),
-                    &"." => handle_special_fun!(1),
-                    &"int32" => {
-                        let scope = self.locals.last_mut().expect("runtime internal error!");
-                        let Some(x) = scope.get_var("x") else {
-                            panic!("runtime internal error!")
-                        };
-                        check_none!(x);
-                        check_is_num!(x);
-                        if x.borrow().type_ <= VarType::F64 {
-                            let x: f64 = (&*x.borrow()).into();
-                            let trunc_float = x.trunc();
-                            let trunc_int = trunc_float as i32;
-                            if f64::from(trunc_int) != trunc_float {
-                                return Err(RuntimeError {
-                                    line,
-                                    msg: format!("too large or small to truncate to I32"),
-                                });
-                            }
-                            Ok(Rc::new(RefCell::new(Var::from(trunc_int))))
-                        } else {
-                            //TODO: add BigNum implemntation
-                            todo!("add BigNum implementation")
-                        }
-                    }
-                    &"print" => {
-                        let scope = self.locals.last_mut().expect("runtime internal error!");
-                        let Some(x) = scope.get_var("x") else {
-                            panic!("runtime internal error!")
-                        };
-                        let out = match x.borrow().type_ {
-                            VarType::Sequence => self.sequence_to_string(Rc::clone(&x), line)?,
-                            _ => x.borrow().to_string(),
-                        };
-                        self.out_buffer.push_str(&out);
-                        Ok(Rc::new(RefCell::new(Var::none())))
-                    }
-                    &"println" => {
-                        let scope = self.locals.last_mut().expect("runtime internal error!");
-                        let Some(x) = scope.get_var("x") else {
-                            panic!("runtime internal error!")
-                        };
-                        let out = match x.borrow().type_ {
-                            VarType::Sequence => self.sequence_to_string(Rc::clone(&x), line)?,
-                            _ => x.borrow().to_string(),
-                        };
-                        self.out_buffer.push_str(&out);
-                        let output = self.out_buffer.drain(..).collect();
-                        self.output.push(output);
-                        self.out_buffer.clear();
-                        Ok(Rc::new(RefCell::new(Var::none())))
-                    }
-                    &"Sequence" => {
-                        let scope = self.locals.last_mut().expect("runtime internal error!");
-                        let Some(len) = scope.get_var("len") else {
-                            panic!("runtime internal error!")
-                        };
-                        check_none!(len);
-                        let len_type = len.borrow().type_;
-                        if len_type >= VarType::F64 {
-                            return Err(RuntimeError {
-                                line,
-                                msg: format!(
-                                    "cannot init an sequence with type {}, only accept integer",
-                                    len_type
-                                ),
-                            });
-                        }
-                        let len: i64 = (&*len.borrow()).into();
-                        let len: usize = match len.try_into() {
-                            Ok(len) => len,
-                            Err(_) => {
-                                return Err(RuntimeError {
-                                    line,
-                                    msg: format!(
-                                        "cannot index using type {} due to computer architecture",
-                                        len_type
-                                    ),
-                                });
-                            }
-                        };
-                        let cur_local = self.locals.len() - 1;
-                        let ptr = self.locals[cur_local].add_arr(len);
-                        let cur_local_id = self.locals[cur_local].id;
-                        let arr = Var::new_sequence(ptr, (cur_local, cur_local_id));
-                        Ok(Rc::new(RefCell::new(arr)))
-                    }
-                    &"len" => {
-                        let scope = self.locals.last_mut().expect("runtime internal error!");
-                        let Some(seq) = scope.get_var("seq") else {
-                            panic!("runtime internal error!")
-                        };
-                        check_none!(seq);
-                        if seq.borrow().type_ != VarType::Sequence {
-                            return Err(RuntimeError {
-                                line,
-                                msg: format!(
-                                    "builtin function len() could only get the length of Sequence"
-                                ),
-                            });
-                        }
-                        let (start, end) = seq.borrow().get_boundary();
-                        // FIXME: break on 128bit?
-                        let value = (end - start) as i64;
-                        Ok(Rc::new(RefCell::new(Var::from(value))))
-                    }
-                    &"import" => {
-                        let scope = self.locals.last_mut().expect("runtime internal error!");
-                        let Some(module) = scope.get_var("__module__") else {
-                            panic!("runtime internal error!")
-                        };
-                        if module.borrow().type_ != VarType::None {
-                            return Err(RuntimeError {
-                                line,
-                                msg: format!(
-                                    "import() function only accpets literal string but got type {}",
-                                    module.borrow().type_
-                                ),
-                            });
-                        }
-                        let path_str = module.borrow().to_string();
-                        if path_str.is_empty() {
-                            return Err(RuntimeError {
-                                line,
-                                msg: format!(
-                                    "import() function only accpets literal string but got None",
-                                ),
-                            });
-                        }
-                        let mut path = std::path::PathBuf::new();
-                        path = path.join(self.work_path.clone());
-                        for sub_path in path_str.split('/') {
-                            path = path.join(sub_path);
-                        }
-                        let source = match std::fs::read_to_string(path) {
-                            Ok(s) => s,
-                            Err(_) => {
-                                return Err(RuntimeError {
-                                    line,
-                                    msg: format!("module {} does not exist", path_str),
-                                });
-                            }
-                        };
-                        let mod_name = path_str.leak();
-                        if self.module.contains_key(mod_name) {
-                            return Ok(Rc::new(RefCell::new(Var::none())));
-                        }
-                        let source = source.leak();
-                        self.module.insert(mod_name, source);
-                        let last_output = self.output.len();
-                        match self.execute(source) {
-                            Ok(_) => {
-                                // do actual import
-                                let split_index = self.locals.len() - 1;
-                                let prv_scope_index = self.locals.len() - 2;
-                                let (prv_scope, mod_scope) = self.locals.split_at_mut(split_index);
-                                let prv_scope = prv_scope.last_mut().unwrap();
-                                let mod_scope = mod_scope.last_mut().unwrap();
-                                // do variable
-                                for (var_name, var_value) in mod_scope.var_table.iter() {
-                                    if var_name == &"__module__" {
-                                        continue;
-                                    }
-                                    // FIXME: check will not work, module overwite value while executing
-                                    if prv_scope.has_var(var_name) {
-                                        return Err(RuntimeError {
-                                            line,
-                                            msg: format!(
-                                                "duplicate variable {} in module {}",
-                                                var_name, mod_name
-                                            ),
-                                        });
-                                    }
-                                    let var_type = var_value.borrow().type_;
-                                    match var_type {
-                                        VarType::Sequence => {
-                                            Runtime::sequence_move_data(
-                                                mod_scope,
-                                                prv_scope,
-                                                prv_scope_index,
-                                                var_value,
-                                            );
-                                            prv_scope.add_ref_var(var_name, Rc::clone(var_value));
-                                        }
-                                        _ => {
-                                            prv_scope.add_ref_var(var_name, Rc::clone(var_value));
-                                        }
-                                    }
-                                }
-                                // do function
-                                for (fun_name, fun_value) in mod_scope.fun_table.iter() {
-                                    if prv_scope.has_fun(fun_name) {
-                                        return Err(RuntimeError {
-                                            line,
-                                            msg: format!(
-                                                "duplicate function {} in module {}",
-                                                fun_name, mod_name
-                                            ),
-                                        });
-                                    }
-                                    prv_scope.add_ref_fun(fun_name, Rc::clone(fun_value));
-                                }
-                                // clear module output
-                                self.output.drain(last_output..);
-                                Ok(Rc::new(RefCell::new(Var::from_string(unsafe {
-                                    // SAFE: no multiple threads
-                                    if DETAIL_DEPTH == 1 {
-                                        format!("<import module {}>", mod_name)
-                                    } else {
-                                        format!("")
-                                    }
-                                }))))
-                            }
-                            Err(err) => Err(RuntimeError {
-                                line,
-                                msg: format!("\n\tImport Error:\n\t\t{}", err.no_loc_info()),
-                            }),
-                        }
-                    }
-                    &"abort" => {
-                        let scope = self.locals.last_mut().expect("runtime internal error!");
-                        let Some(msg) = scope.get_var("msg") else {
-                            panic!("runtime internal error!")
-                        };
-                        Err(RuntimeError {
+                &"import" => {
+                    let scope = self.locals.last_mut().expect("runtime internal error!");
+                    let Some(module) = scope.get_var("__module__") else {
+                        panic!("runtime internal error!")
+                    };
+                    if module.borrow().type_ != VarType::None {
+                        return Err(RuntimeError {
                             line,
-                            msg: format!("abort(\"{}\")", msg.borrow().to_string()),
-                        })
+                            msg: format!(
+                                "import() function only accpets literal string but got type {}",
+                                module.borrow().type_
+                            ),
+                        });
                     }
-                    &"assert_eq" => {
-                        let scope = self.locals.last_mut().expect("runtime internal error!");
-                        let Some(lhs) = scope.get_var("lhs") else {
-                            panic!("runtime internal error!")
-                        };
-                        let Some(rhs) = scope.get_var("rhs") else {
-                            panic!("runtime internal error!")
-                        };
-                        let Some(msg) = scope.get_var("msg") else {
-                            panic!("runtime internal error!")
-                        };
-                        if lhs.borrow().type_ == rhs.borrow().type_
-                            && lhs.borrow().type_ == VarType::Sequence
-                        {
-                            if self.is_sequence_equal(&lhs, &rhs) {
-                                Ok(Rc::new(RefCell::new(Var::none())))
-                            } else {
-                                Err(RuntimeError {
-                                    line,
-                                    msg: format!(
-                                        "assert_eq(lhs, rhs, \"{}\")",
-                                        msg.borrow().to_string()
-                                    ),
-                                })
-                            }
-                        } else if (*lhs.borrow()) == (*rhs.borrow()) {
-                            Ok(Rc::new(RefCell::new(Var::none())))
+                    let path_str = module.borrow().to_string();
+                    if path_str.is_empty() {
+                        return Err(RuntimeError {
+                            line,
+                            msg: format!(
+                                "import() function only accpets literal string but got None",
+                            ),
+                        });
+                    }
+                    let mut path = std::path::PathBuf::new();
+                    path = path.join(self.work_path.clone());
+                    for sub_path in path_str.split('/') {
+                        path = path.join(sub_path);
+                    }
+                    self.import_mls(&path_str, path, Some(line))?;
+                    Ok(Rc::new(RefCell::new(Var::from_string(unsafe {
+                        // SAFE: no multiple threads
+                        if DETAIL_DEPTH == 1 {
+                            format!("<import module {}>", path_str)
                         } else {
-                            Err(RuntimeError {
-                                line,
-                                msg: format!(
-                                    "assert_eq(lhs, rhs, \"{}\")",
-                                    msg.borrow().to_string()
-                                ),
-                            })
+                            format!("")
                         }
-                    }
-                    &"assert_ne" => {
-                        let scope = self.locals.last_mut().expect("runtime internal error!");
-                        let Some(lhs) = scope.get_var("lhs") else {
-                            panic!("runtime internal error!")
-                        };
-                        let Some(rhs) = scope.get_var("rhs") else {
-                            panic!("runtime internal error!")
-                        };
-                        let Some(msg) = scope.get_var("msg") else {
-                            panic!("runtime internal error!")
-                        };
-                        if lhs.borrow().type_ == rhs.borrow().type_
-                            && lhs.borrow().type_ == VarType::Sequence
-                        {
-                            if !self.is_sequence_equal(&lhs, &rhs) {
-                                Ok(Rc::new(RefCell::new(Var::none())))
-                            } else {
-                                Err(RuntimeError {
-                                    line,
-                                    msg: format!(
-                                        "assert_eq(lhs, rhs, \"{}\")",
-                                        msg.borrow().to_string()
-                                    ),
-                                })
-                            }
-                        } else if (*lhs.borrow()) != (*rhs.borrow()) {
-                            Ok(Rc::new(RefCell::new(Var::none())))
-                        } else {
-                            Err(RuntimeError {
-                                line,
-                                msg: format!(
-                                    "assert_ne(lhs, rhs, \"{}\")",
-                                    msg.borrow().to_string()
-                                ),
-                            })
-                        }
-                    }
-                    _ => panic!("runtime internal error!"),
+                    }))))
                 }
-            }
+                _ => panic!("runtime internal error!"),
+            },
         }
-    }
-    fn is_sequence_equal(&self, lhs: &Rc<RefCell<Var>>, rhs: &Rc<RefCell<Var>>) -> bool {
-        let lhs_ptr = lhs.borrow().get_boundary();
-        let (lhs_scope, _) = lhs.borrow().get_scope();
-        let rhs_ptr = rhs.borrow().get_boundary();
-        let (rhs_scope, _) = rhs.borrow().get_scope();
-        for (li, ri) in (lhs_ptr.0..lhs_ptr.1).zip(rhs_ptr.0..rhs_ptr.1) {
-            let l = Rc::clone(&self.locals[lhs_scope].heap[li]);
-            let r = Rc::clone(&self.locals[rhs_scope].heap[ri]);
-            if l.borrow().type_ == r.borrow().type_ && l.borrow().type_ == VarType::Sequence {
-                if !self.is_sequence_equal(&l, &r) {
-                    return false;
-                }
-            } else {
-                if (*l.borrow()) != (*r.borrow()) {
-                    return false;
-                }
-            }
-        }
-        true
     }
     fn sequence_move_data(
         from: &Scope<'input>,

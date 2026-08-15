@@ -27,7 +27,8 @@ pub enum Inst<'input> {
     Pow(Expr<'input>, Expr<'input>),
     Mod(Expr<'input>, Expr<'input>),
     Idx(Expr<'input>, Expr<'input>),
-    BuiltinFnCall(&'input str),
+    RustFnCall(usize),
+    RuntimeFnCall(&'input str),
 }
 
 #[derive(Debug, Default, Clone)]
@@ -79,7 +80,7 @@ impl<'input> Inst<'input> {
     }
     pub fn priority(&self) -> u8 {
         match self {
-            Inst::None | Inst::Expr(_) | Inst::BuiltinFnCall(_) => {
+            Inst::None | Inst::Expr(_) | Inst::RustFnCall(_) | Inst::RuntimeFnCall(_) => {
                 panic!("compiler internal error!")
             }
             Inst::Set(_, _) => 0,
@@ -103,7 +104,11 @@ impl<'input> Inst<'input> {
             | Self::Pow(lhs, rhs)
             | Self::Mod(lhs, rhs)
             | Self::Idx(lhs, rhs) => (lhs, rhs),
-            Self::BuiltinFnCall(_) | Self::None | Self::Expr(_) | Self::Neg(_) => {
+            Self::RuntimeFnCall(_)
+            | Self::RustFnCall(_)
+            | Self::None
+            | Self::Expr(_)
+            | Self::Neg(_) => {
                 panic!("compiler internal error!")
             }
         }

@@ -25,6 +25,7 @@ use std::rc::Rc;
 pub type RMFunResult<T> = Result<T, String>;
 pub type RMFunRetType = RMFunResult<Option<VarApi>>;
 pub type RMFunPtr = fn(ScopeApi) -> RMFunRetType;
+pub type RMExport = Vec<ModMember>;
 
 #[macro_export]
 macro_rules! export {
@@ -46,7 +47,7 @@ macro_rules! export {
         compile_error!(concat!("export! grammer error: possibly missing semicolon => ", stringify!($($invalid)*)));
     };
     { $($export:tt)* } => {
-        pub fn export_module() -> Vec<ModMember> {
+        pub fn export_module() -> RMExport {
             export!{ @member $($export)* }
         }
     };
@@ -224,6 +225,9 @@ impl VarApi {
         Self {
             rref: Rc::new(RefCell::new(Var::none())),
         }
+    }
+    pub fn into_innter(self) -> Rc<RefCell<Var>> {
+        self.rref
     }
     pub fn set(&mut self, value: Number) {
         match value {
