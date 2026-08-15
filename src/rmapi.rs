@@ -26,6 +26,7 @@ pub type RMFunResult<T> = Result<T, String>;
 pub type RMFunRetType = RMFunResult<Option<VarApi>>;
 pub type RMFunPtr = fn(ScopeApi) -> RMFunRetType;
 pub type RMExport = Vec<ModMember>;
+pub type RMExportFun = fn() -> RMExport;
 
 #[macro_export]
 macro_rules! export {

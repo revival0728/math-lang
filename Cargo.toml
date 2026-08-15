@@ -15,6 +15,7 @@ opt-level = 2
 lexgen = "0.16.0"
 lexgen_util = "0.16.0"
 clap = { version = "4.6.1", features = ["derive"] }
+libloading = "0.9.0"
 
 [dev-dependencies]
 pretty_assertions = "1.4.1"

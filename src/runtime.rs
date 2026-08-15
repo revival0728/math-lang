@@ -26,7 +26,7 @@ pub struct Scope<'input> {
     fun_table: HashMap<&'input str, Rc<RefCell<Fun<'input>>>>,
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default)]
 pub struct Runtime<'input, ModSystem>
 where
     ModSystem: module::ModSystem,
@@ -145,6 +145,7 @@ where
         add_runtime_fn! { print(x) }
         add_runtime_fn! { println(x) }
         add_runtime_fn! { import(__module__) }
+        add_runtime_fn! { import_rlib(__rlib__) }
         // add builtin Rust functions
         let builtin = builtin::export_module();
         runtime.import_builtin(&builtin);
@@ -176,7 +177,7 @@ where
     ) -> Result<(), RuntimeError> {
         let line = exec_line.unwrap_or(0);
         let mod_name = mod_name.to_string().leak();
-        let source = match self.msys.read(path) {
+        let source = match self.msys.read_mls(path) {
             Ok(s) => s,
             Err(_) => {
                 return Err(RuntimeError {
@@ -247,6 +248,44 @@ where
         }
         // clear module output
         self.output.drain(last_output..);
+        Ok(())
+    }
+    pub fn import_lib(
+        &mut self,
+        mod_name: &str,
+        path: PathBuf,
+        exec_line: Option<usize>,
+    ) -> Result<(), RuntimeError> {
+        let line = exec_line.unwrap_or(0);
+        let lib = self.msys.read_lib(path).map_err(|_| RuntimeError {
+            line,
+            msg: format!(
+                "cannot read lib {}, may not exist or no export_module()",
+                mod_name
+            ),
+        })?;
+        let cur_scope = self.locals.last_mut().unwrap();
+        for member in lib {
+            match member {
+                ModMember::Var((name, value)) => match value {
+                    Number::U8(num) => cur_scope.add_var(name, Var::from(num as i32)),
+                    Number::U16(num) => cur_scope.add_var(name, Var::from(num as i32)),
+                    Number::U32(num) => cur_scope.add_var(name, Var::from(num as i64)),
+                    Number::I8(num) => cur_scope.add_var(name, Var::from(num as i32)),
+                    Number::I16(num) => cur_scope.add_var(name, Var::from(num as i32)),
+                    Number::I32(num) => cur_scope.add_var(name, Var::from(num)),
+                    Number::I64(num) => cur_scope.add_var(name, Var::from(num)),
+                    Number::F32(num) => cur_scope.add_var(name, Var::from(num as f64)),
+                    Number::F64(num) => cur_scope.add_var(name, Var::from(num)),
+                },
+                ModMember::Fun((name, paras, rfn)) => {
+                    let mut fun = Fun::new(paras.clone());
+                    fun.push_inst(Inst::RustFnCall(self.rustfn.len()));
+                    cur_scope.add_ref_fun(name, Rc::new(RefCell::new(fun)));
+                    self.rustfn.push(rfn);
+                }
+            }
+        }
         Ok(())
     }
     pub fn import_builtin(&mut self, export: &RMExport) {
@@ -820,6 +859,44 @@ where
                         // SAFE: no multiple threads
                         if DETAIL_DEPTH == 1 {
                             format!("<import module {}>", path_str)
+                        } else {
+                            format!("")
+                        }
+                    }))))
+                }
+                &"import_rlib" => {
+                    let scope = self.locals.last_mut().expect("runtime internal error!");
+                    let Some(module) = scope.get_var("__rlib__") else {
+                        panic!("runtime internal error!")
+                    };
+                    if module.borrow().type_ != VarType::None {
+                        return Err(RuntimeError {
+                            line,
+                            msg: format!(
+                                "import_rlib() function only accpets literal string but got type {}",
+                                module.borrow().type_
+                            ),
+                        });
+                    }
+                    let path_str = module.borrow().to_string();
+                    if path_str.is_empty() {
+                        return Err(RuntimeError {
+                            line,
+                            msg: format!(
+                                "import_rlib() function only accpets literal string but got None",
+                            ),
+                        });
+                    }
+                    let mut path = std::path::PathBuf::new();
+                    path = path.join(self.work_path.clone());
+                    for sub_path in path_str.split('/') {
+                        path = path.join(sub_path);
+                    }
+                    self.import_lib(&path_str, path, Some(line))?;
+                    Ok(Rc::new(RefCell::new(Var::from_string(unsafe {
+                        // SAFE: no multiple threads
+                        if DETAIL_DEPTH == 1 {
+                            format!("<import rust library {}>", path_str)
                         } else {
                             format!("")
                         }
