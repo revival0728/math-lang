@@ -225,6 +225,7 @@ pub mod control {
     }
 }
 
+#[unsafe(export_name = "export_builtin_module")]
 export! {
     pi = F64(consts::PI);
     e = F64(consts::E);

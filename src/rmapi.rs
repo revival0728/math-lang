@@ -47,6 +47,7 @@ macro_rules! export {
         compile_error!(concat!("export! grammer error: possibly missing semicolon => ", stringify!($($invalid)*)));
     };
     { $($export:tt)* } => {
+        #[unsafe(no_mangle)]
         pub fn export_module() -> RMExport {
             export!{ @member $($export)* }
         }
