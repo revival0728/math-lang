@@ -20,7 +20,15 @@ impl ModSystem for FileSystem {
             Err(_) => Err(()),
         }
     }
-    fn read_lib(&mut self, path: PathBuf) -> Result<RMExport, ()> {
+    fn read_lib(&mut self, mut path: PathBuf) -> Result<RMExport, ()> {
+        if path.extension().is_none() {
+            path.add_extension(match std::env::consts::OS {
+                "windows" => "dll",
+                "linux" => "so",
+                "macos" => "dylib",
+                _ => "",
+            });
+        }
         unsafe {
             let lib = libloading::Library::new(path).map_err(|_| ())?;
             let export_fun: Symbol<RMExportFun> = lib.get(b"export_module\0").map_err(|_| ())?;

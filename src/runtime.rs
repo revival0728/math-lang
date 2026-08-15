@@ -892,14 +892,6 @@ where
                     for sub_path in path_str.split('/') {
                         path = path.join(sub_path);
                     }
-                    if path.extension().is_none() {
-                        path.add_extension(match std::env::consts::OS {
-                            "windows" => "dll",
-                            "linux" => "so",
-                            "macos" => "dylib",
-                            _ => "",
-                        });
-                    }
                     self.import_lib(&path_str, path, Some(line))?;
                     Ok(Rc::new(RefCell::new(Var::from_string(unsafe {
                         // SAFE: no multiple threads
