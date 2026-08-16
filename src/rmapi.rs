@@ -2,15 +2,27 @@
 //
 // Rust Module define example
 //
-// pub fn rust_add_i32(sapi: ScopeApi) -> RMFunRetType {
-//     let a: i32 = sapi.get_current_var("a").unwrap().try_into().map_err(|t| format!("expected I32 type got {} type", t))?;
-//     let b: i32 = sapi.get_current_var("b").unwrap().try_into().map_err(|t| format!("expected I32 type got {} type", t))?;
-//     let result = a + b;
-//     Ok(Some(VarApi::from(result)))
+// pub fn rust_add(left: i64, right: i64) -> i64 {
+//     left + right
 // }
+
+// pub fn add(sapi: ScopeApi) -> RMFunRetType {
+//     let a: i64 = sapi
+//         .get_current_var("a")
+//         .unwrap()
+//         .try_into()
+//         .map_err(|t| format!("expected I32 type got {} type", t))?;
+//     let b: i64 = sapi
+//         .get_current_var("b")
+//         .unwrap()
+//         .try_into()
+//         .map_err(|t| format!("expected I32 type got {} type", t))?;
+//     Ok(Some(VarApi::from(rust_add(a, b))))
+// }
+
 // export! {
-//     pi = F64(3.14);
-//     add(a, b) = rust_add_i32;
+//     LUCKY = I32(0923);
+//     add_i64(a, b) = add;
 // }
 //
 // For more examples please check out src/builtin.rs

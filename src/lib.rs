@@ -11,3 +11,7 @@ mod test;
 mod var;
 
 pub use rmapi::*;
+
+pub mod prelude {
+    pub use super::{ModMember, Number, RMExport, RMFunRetType, ScopeApi, VarApi, export};
+}

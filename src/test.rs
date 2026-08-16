@@ -23,6 +23,9 @@ pub mod examples {
     pub fn module() -> String {
         get("module.mls")
     }
+    pub fn rust_module() -> String {
+        get("rust_module.mls")
+    }
 }
 
 #[cfg(test)]

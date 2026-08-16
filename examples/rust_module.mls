@@ -1,0 +1,5 @@
+import_rlib("librlib")
+
+println(LUCKY)
+print("add_i64(1, 1) = ")
+println(add_i64(1, 1))

@@ -169,6 +169,54 @@ where
         self.output.push(output);
         self.out_buffer.clear();
     }
+    fn import_by_scope(
+        mod_name: &str,
+        mod_scope: &mut Scope<'input>,
+        to_scope: &mut Scope<'input>,
+        to_scope_index: usize,
+        skip_var: &str,
+        line: usize,
+    ) -> Result<(), RuntimeError> {
+        // do variable
+        for (var_name, var_value) in mod_scope.var_table.iter() {
+            if var_name == &skip_var {
+                continue;
+            }
+            // FIXME: check will not work, module overwite value while executing
+            if to_scope.has_var(var_name) {
+                return Err(RuntimeError {
+                    line,
+                    msg: format!("duplicate variable {} in module {}", var_name, mod_name),
+                });
+            }
+            let var_type = var_value.borrow().type_;
+            match var_type {
+                VarType::Sequence => {
+                    Runtime::<ModSystem>::sequence_move_data(
+                        mod_scope,
+                        to_scope,
+                        to_scope_index,
+                        var_value,
+                    );
+                    to_scope.add_ref_var(var_name, Rc::clone(var_value));
+                }
+                _ => {
+                    to_scope.add_ref_var(var_name, Rc::clone(var_value));
+                }
+            }
+        }
+        // do function
+        for (fun_name, fun_value) in mod_scope.fun_table.iter() {
+            if to_scope.has_fun(fun_name) {
+                return Err(RuntimeError {
+                    line,
+                    msg: format!("duplicate function {} in module {}", fun_name, mod_name),
+                });
+            }
+            to_scope.add_ref_fun(fun_name, Rc::clone(fun_value));
+        }
+        Ok(())
+    }
     pub fn import_mls(
         &mut self,
         mod_name: &str,
@@ -200,44 +248,14 @@ where
                 let (prv_scope, mod_scope) = self.locals.split_at_mut(split_index);
                 let prv_scope = prv_scope.last_mut().unwrap();
                 let mod_scope = mod_scope.last_mut().unwrap();
-                // do variable
-                for (var_name, var_value) in mod_scope.var_table.iter() {
-                    if var_name == &"__module__" {
-                        continue;
-                    }
-                    // FIXME: check will not work, module overwite value while executing
-                    if prv_scope.has_var(var_name) {
-                        return Err(RuntimeError {
-                            line,
-                            msg: format!("duplicate variable {} in module {}", var_name, mod_name),
-                        });
-                    }
-                    let var_type = var_value.borrow().type_;
-                    match var_type {
-                        VarType::Sequence => {
-                            Runtime::<ModSystem>::sequence_move_data(
-                                mod_scope,
-                                prv_scope,
-                                prv_scope_index,
-                                var_value,
-                            );
-                            prv_scope.add_ref_var(var_name, Rc::clone(var_value));
-                        }
-                        _ => {
-                            prv_scope.add_ref_var(var_name, Rc::clone(var_value));
-                        }
-                    }
-                }
-                // do function
-                for (fun_name, fun_value) in mod_scope.fun_table.iter() {
-                    if prv_scope.has_fun(fun_name) {
-                        return Err(RuntimeError {
-                            line,
-                            msg: format!("duplicate function {} in module {}", fun_name, mod_name),
-                        });
-                    }
-                    prv_scope.add_ref_fun(fun_name, Rc::clone(fun_value));
-                }
+                Runtime::<ModSystem>::import_by_scope(
+                    mod_name,
+                    mod_scope,
+                    prv_scope,
+                    prv_scope_index,
+                    "__module__",
+                    line,
+                )?;
             }
             Err(err) => {
                 return Err(RuntimeError {
@@ -245,7 +263,7 @@ where
                     msg: format!("\n\tImport Error:\n\t\t{}", err.no_loc_info()),
                 });
             }
-        }
+        };
         // clear module output
         self.output.drain(last_output..);
         Ok(())
@@ -264,28 +282,40 @@ where
                 mod_name
             ),
         })?;
-        let cur_scope = self.locals.last_mut().unwrap();
+        let split_index = self.locals.len() - 1;
+        let prv_scope_index = self.locals.len() - 2;
+        let (prv_scope, mod_scope) = self.locals.split_at_mut(split_index);
+        let prv_scope = prv_scope.last_mut().unwrap();
+        let mod_scope = mod_scope.last_mut().unwrap();
         for member in lib {
             match member {
                 ModMember::Var((name, value)) => match value {
-                    Number::U8(num) => cur_scope.add_var(name, Var::from(num as i32)),
-                    Number::U16(num) => cur_scope.add_var(name, Var::from(num as i32)),
-                    Number::U32(num) => cur_scope.add_var(name, Var::from(num as i64)),
-                    Number::I8(num) => cur_scope.add_var(name, Var::from(num as i32)),
-                    Number::I16(num) => cur_scope.add_var(name, Var::from(num as i32)),
-                    Number::I32(num) => cur_scope.add_var(name, Var::from(num)),
-                    Number::I64(num) => cur_scope.add_var(name, Var::from(num)),
-                    Number::F32(num) => cur_scope.add_var(name, Var::from(num as f64)),
-                    Number::F64(num) => cur_scope.add_var(name, Var::from(num)),
+                    Number::U8(num) => mod_scope.add_var(name, Var::from(num as i32)),
+                    Number::U16(num) => mod_scope.add_var(name, Var::from(num as i32)),
+                    Number::U32(num) => mod_scope.add_var(name, Var::from(num as i64)),
+                    Number::I8(num) => mod_scope.add_var(name, Var::from(num as i32)),
+                    Number::I16(num) => mod_scope.add_var(name, Var::from(num as i32)),
+                    Number::I32(num) => mod_scope.add_var(name, Var::from(num)),
+                    Number::I64(num) => mod_scope.add_var(name, Var::from(num)),
+                    Number::F32(num) => mod_scope.add_var(name, Var::from(num as f64)),
+                    Number::F64(num) => mod_scope.add_var(name, Var::from(num)),
                 },
                 ModMember::Fun((name, paras, rfn)) => {
                     let mut fun = Fun::new(paras.clone());
                     fun.push_inst(Inst::RustFnCall(self.rustfn.len()));
-                    cur_scope.add_ref_fun(name, Rc::new(RefCell::new(fun)));
+                    mod_scope.add_ref_fun(name, Rc::new(RefCell::new(fun)));
                     self.rustfn.push(rfn);
                 }
             }
         }
+        Runtime::<ModSystem>::import_by_scope(
+            mod_name,
+            mod_scope,
+            prv_scope,
+            prv_scope_index,
+            "__module__",
+            line,
+        )?;
         Ok(())
     }
     pub fn import_builtin(&mut self, export: &RMExport) {
@@ -966,6 +996,19 @@ mod test {
         module::FileSystem,
         test::{examples, simple_expr},
     };
+
+    #[test]
+    fn rust_module() {
+        let source = examples::rust_module();
+        let mut runtime = Runtime::<FileSystem>::new();
+        runtime.work_path = std::path::PathBuf::new().join("target").join("release");
+        let output = runtime.execute(&source).unwrap();
+        let correct = vec!["923", "add_i64(1, 1) = 2"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect::<Vec<String>>();
+        assert_eq!(output, &correct);
+    }
 
     #[test]
     fn module() {
