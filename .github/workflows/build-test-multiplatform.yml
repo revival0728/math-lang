@@ -33,6 +33,7 @@ jobs:
       run: cargo build --workspace --profile ${{ matrix.build_type }} --verbose
 
     - name: List Build Artifacts
+      shell: bash
       run: ls -lh target/release
 
     - name: Test
