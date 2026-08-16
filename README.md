@@ -71,7 +71,6 @@ please checkout the [document](/docs/README.md)
 Builtin functions are now has two types, `rust function` and `runtime function`. Only `Module Relative Functions` and `Output Functions` are `runtime function`, the remainings are `rust function`. `rust function` works the same as external rust module while `runtime function` works the same as old builtin functions. The key difference between two types of builtins is that `runtime function` is dependent to the runtime and can be called directly from Rust while `rust function` is independent which works just like a math function. This change will not has actual impact on the execution.
 
 ### TODO
-- [ ] Change Cargo.toml version
 - [ ] implement BigNum, fix i64 and f64 overflow problem (rarely happened)
 - [ ] improve error message
 - [ ] fix tail call optimization to recursion
