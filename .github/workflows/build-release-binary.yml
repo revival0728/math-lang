@@ -46,6 +46,13 @@ jobs:
     - name: Build
       run: cargo build --workspace --profile ${{ matrix.build_type }} --verbose
 
+    - name: Rename test artifacts
+      shell: bash
+      run: |
+        if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+          mv target/release/rlib.dll target/release/librlib.dll
+        fi
+
     - name: Test
       run: cargo test --workspace --verbose
     
