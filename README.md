@@ -63,6 +63,8 @@ please checkout the [document](./docs/README.md)
 ## Development
 ### Main Changes
 - massively improved recursion performance
+- support rust library module
+- added `import_rlib()`
 
 ### Details Without Impact
 Builtin functions are now has two types, `rust function` and `runtime function`. Only `Module Relative Functions` and `Output Functions` are `runtime function`, the remainings are `rust function`. `rust function` works the same as external rust module while `runtime function` works the same as old builtin functions. The key difference between two types of builtins is that `runtime function` is dependent to the runtime and can be called directly from Rust while `rust function` is independent which works just like a math function. This change will not has actual impact on the execution.
@@ -75,7 +77,6 @@ Builtin functions are now has two types, `rust function` and `runtime function`.
 - [ ] add type(), hash()
 - [ ] add function info expression
 - [ ] add custom type support (parsed as None but bytes has meanings)
-- [ ] add rust binary module support
 - [ ] fix cannot access parent scope with same function name (?)
 - [ ] flatten inst, flat Inst::Mul with new inst Inst::Jump(cond, dest)
 - [ ] new operator for declaring variable at current scope (or cannot access global from functions)
