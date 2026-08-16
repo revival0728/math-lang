@@ -12,6 +12,7 @@
 //!
 //! For example:
 //! ```
+//! # use math_lang::prelude::*;
 //! pub fn plus_one(sapi: ScopeApi) -> RMFunRetType {
 //!     let x: i32 = sapi
 //!         .get_current_var("x")
@@ -55,7 +56,7 @@
 //! ```
 //!
 //! `Cargo.toml`:
-//! ```
+//! ```toml
 //! [package]
 //! name = "rlib"
 //! version = "0.1.0"
@@ -108,6 +109,10 @@ pub type RMExportFun = fn() -> RMExport;
 ///
 /// The Example:
 /// ```
+/// # use math_lang::prelude::*;
+/// # pub fn sin(sapi: ScopeApi) -> RMFunRetType { unimplemented!() }
+/// # pub fn log(sapi: ScopeApi) -> RMFunRetType { unimplemented!() }
+/// # pub fn add_two_number(sapi: ScopeApi) -> RMFunRetType { unimplemented!() }
 /// export! {
 ///     pi = F64(3.14);
 ///     sin(x) = sin;
@@ -221,10 +226,12 @@ impl<'runtime, 'call> ScopeApi<'runtime, 'call> {
     }
     /// Set runtime variable to value by name.
     /// ```
-    /// pub fn example(sapi: ScopeApi) -> RMFunRetType {
+    /// # use math_lang::prelude::*;
+    /// pub fn example(mut sapi: ScopeApi) -> RMFunRetType {
     ///     let lucky = VarApi::from(0923);
     ///     sapi.set_var("LUCKY", &lucky);
-    ///     ...
+    ///     // ...
+    ///     # Ok(None)
     /// }
     /// ```
     pub fn set_var(&mut self, name: &'runtime str, vapi: &VarApi) -> VarApi {
@@ -253,9 +260,11 @@ impl<'runtime, 'call> ScopeApi<'runtime, 'call> {
     }
     /// Get runtime variable by name excluding builtins.
     /// ```
+    /// # use math_lang::prelude::*;
     /// pub fn example(sapi: ScopeApi) -> RMFunRetType {
     ///     let lucky: VarApi = sapi.get_var("LUCKY").unwrap_or(VarApi::from(0923));
-    ///     ...
+    ///     // ...
+    ///     # Ok(None)
     /// }
     /// ```
     pub fn get_var(&self, name: &'runtime str) -> Option<VarApi> {
@@ -278,10 +287,12 @@ impl<'runtime, 'call> ScopeApi<'runtime, 'call> {
     }
     /// Get runtime builtin variable by name.
     /// ```
+    /// # use math_lang::prelude::*;
     /// pub fn example(sapi: ScopeApi) -> RMFunRetType {
     ///     let pi: VarApi = sapi.get_builtin_var("pi").unwrap();  // "pi" is builtin constant
     ///     let pi: f64 = pi.try_into().unwrap();      // "pi" is f64 constant
-    ///     ...
+    ///     // ...
+    ///     # Ok(None)
     /// }
     /// ```
     pub fn get_builtin_var(&self, name: &'runtime str) -> Option<VarApi> {
@@ -312,10 +323,12 @@ impl<'runtime, 'call> ScopeApi<'runtime, 'call> {
     }
     /// Allocate a piece of runtime heap memory.
     /// ```
-    /// pub fn example(sapi: ScopeApi) -> RMFunRetType {
+    /// # use math_lang::prelude::*;
+    /// pub fn example(mut sapi: ScopeApi) -> RMFunRetType {
     ///     let memory = sapi.allocate(5);
     ///     let seq = VarApi::from(memory);  // Sequence with length 5
-    ///     ...
+    ///     // ...
+    ///     # Ok(None)
     /// }
     /// ```
     pub fn allocate(&mut self, len: usize) -> RMHeapInfo {
@@ -372,10 +385,12 @@ impl VarApi {
     }
     /// Set variable to value.
     /// ```
+    /// # use math_lang::prelude::*;
     /// pub fn example(sapi: ScopeApi) -> RMFunRetType {
     ///     let mut lucky: VarApi = sapi.get_var("LUCKY").unwrap_or(VarApi::none());
-    ///     lucky.set(Number::U8(0923));
-    ///     ...
+    ///     lucky.set(Number::U32(0923));
+    ///     // ...
+    ///     # Ok(None)
     /// }
     /// ```
     pub fn set(&mut self, value: Number) {
@@ -406,11 +421,13 @@ impl VarApi {
     ///
     /// This function will let the variable become [`RMApiType::ByteArray`] for the safety of runtime.
     /// ```
-    /// pub fn example(sapi: ScopeApi) -> RMFunRetType {
+    /// # use math_lang::prelude::*;
+    /// pub fn example(mut sapi: ScopeApi) -> RMFunRetType {
     ///     let mut name_api: VarApi = sapi.get_current_var("name").unwrap();
     ///     let name = "Chisato";
-    ///     nam_api.set_bytes(name.as_bytes());
-    ///     ...
+    ///     name_api.set_bytes(name.as_bytes());
+    ///     // ...
+    ///     # Ok(None)
     /// }
     /// ```
     pub fn set_bytes(&mut self, bytes: &[u8]) {
@@ -422,12 +439,14 @@ impl VarApi {
     ///
     /// Return actual type if variable is not [`RMApiType::Sequence`].
     /// ```
+    /// # use math_lang::prelude::*;
     /// pub fn example(sapi: ScopeApi) -> RMFunRetType {
     ///     let seq = sapi.get_current_var("seq").unwrap();
     ///     let memory = seq.get_heap_info().unwrap();
     ///     let same_seq = VarApi::from(memory);  // VarApi owns the same runtime memory (sequence) with seq
-    ///     assert!(sapi.var_eq(seq, same_seq));
-    ///     ...
+    ///     assert!(sapi.var_eq(&seq, &same_seq));
+    ///     // ...
+    ///     # Ok(None)
     /// }
     /// ```
     pub fn get_heap_info(&self) -> Result<RMHeapInfo, RMApiType> {
@@ -561,16 +580,18 @@ impl VarApi {
     ///
     /// Return actual type if variable is not [`RMApiType::Sequence`].
     /// ```
+    /// # use math_lang::prelude::*;
     /// pub fn example(sapi: ScopeApi) -> RMFunRetType {
     ///     let mut name_vec = sapi
     ///         .get_current_var("name_seq")
     ///         .unwrap()
-    ///         .try_into_sequence()
+    ///         .try_into_sequence(&sapi)
     ///         .map_err(|t| format!("expect Sequence got {}", t))?;
     ///
     ///     name_vec[0].set_bytes(b"Alice");
     ///     name_vec[1].set_bytes(b"Bob");
-    ///     ...
+    ///     // ...
+    ///     # Ok(None)
     /// }
     /// ```
     pub fn try_into_sequence(self, sapi: &ScopeApi) -> Result<Vec<VarApi>, RMApiType> {

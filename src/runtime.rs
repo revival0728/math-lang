@@ -590,6 +590,23 @@ where
             Inst::Sub(lhs, rhs) => handle_binary!(lhs - rhs),
             Inst::Div(lhs, rhs) => handle_binary!(lhs / rhs),
             Inst::Mod(lhs, rhs) => handle_binary!(lhs % rhs),
+            Inst::Cur(expr) => match expr {
+                Expr::Var(name) => {
+                    let cur_scope = self.locals.last_mut().unwrap();
+                    match cur_scope.get_var(name) {
+                        Some(var) => Ok(var),
+                        None => {
+                            let var = Rc::new(RefCell::new(Var::none()));
+                            cur_scope.add_ref_var(name, Rc::clone(&var));
+                            Ok(var)
+                        }
+                    }
+                }
+                _ => Err(RuntimeError {
+                    line,
+                    msg: format!("current operator only applies to variables"),
+                }),
+            },
             Inst::Mul(lhs, rhs) => {
                 let lhs = self.exec_expr(lhs, line)?;
                 check_none!(lhs);
@@ -996,6 +1013,18 @@ mod test {
         module::FileSystem,
         test::{examples, simple_expr},
     };
+
+    #[test]
+    fn cur_operator() {
+        let source = examples::cur_operator();
+        let mut runtime = Runtime::<FileSystem>::new();
+        let output = runtime.execute(&source).unwrap();
+        let correct = vec!["0", "4", "0"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect::<Vec<String>>();
+        assert_eq!(output, &correct);
+    }
 
     #[test]
     fn rust_module() {

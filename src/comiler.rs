@@ -19,6 +19,7 @@ pub enum Inst<'input> {
     None,
     Expr(Expr<'input>),
     Neg(Expr<'input>),
+    Cur(Expr<'input>),
     Set(Expr<'input>, Expr<'input>),
     Add(Expr<'input>, Expr<'input>),
     Sub(Expr<'input>, Expr<'input>),
@@ -64,6 +65,13 @@ impl<'input> Inst<'input> {
             _ => panic!("compiler internal error!"),
         }
     }
+    pub fn from_single_token(token: &Token<'input>, expr: Expr<'input>) -> Self {
+        match token {
+            Token::NegSign => Self::Neg(expr),
+            Token::At => Self::Cur(expr),
+            _ => panic!("compiler internal error!"),
+        }
+    }
     pub fn is_expr(&self) -> bool {
         if let Inst::Expr(_) = self {
             true
@@ -80,18 +88,19 @@ impl<'input> Inst<'input> {
     }
     pub fn priority(&self) -> u8 {
         match self {
-            Inst::None | Inst::Expr(_) | Inst::RustFnCall(_) | Inst::RuntimeFnCall(_) => {
+            Self::None | Self::Expr(_) | Self::RustFnCall(_) | Self::RuntimeFnCall(_) => {
                 panic!("compiler internal error!")
             }
-            Inst::Set(_, _) => 0,
-            Inst::Mod(_, _) => 1,
-            Inst::Add(_, _) => 2,
-            Inst::Sub(_, _) => 2,
-            Inst::Mul(_, _) => 3,
-            Inst::Div(_, _) => 3,
-            Inst::Pow(_, _) => 4,
-            Inst::Idx(_, _) => 5,
-            Inst::Neg(_) => 6,
+            Self::Set(_, _) => 0,
+            Self::Mod(_, _) => 1,
+            Self::Add(_, _) => 2,
+            Self::Sub(_, _) => 2,
+            Self::Mul(_, _) => 3,
+            Self::Div(_, _) => 3,
+            Self::Pow(_, _) => 4,
+            Self::Idx(_, _) => 5,
+            Self::Neg(_) => 6,
+            Self::Cur(_) => 7,
         }
     }
     pub fn get_binary_exprs(&mut self) -> (&mut Expr<'input>, &mut Expr<'input>) {
@@ -108,7 +117,8 @@ impl<'input> Inst<'input> {
             | Self::RustFnCall(_)
             | Self::None
             | Self::Expr(_)
-            | Self::Neg(_) => {
+            | Self::Neg(_)
+            | Self::Cur(_) => {
                 panic!("compiler internal error!")
             }
         }
@@ -220,6 +230,18 @@ impl<'input> Compiler<'input> {
                     } else {
                         to_add_mul = true;
                     }
+                }
+                Token::At => {
+                    to_neg_sign = false;
+                    to_make_func = true;
+                    if to_add_mul {
+                        self.expr_buf
+                            .last_mut()
+                            .unwrap()
+                            .1
+                            .push((lloc, Token::Star));
+                    }
+                    to_add_mul = false;
                 }
                 Token::RParen => {
                     if paren_depth > 0 {
@@ -337,7 +359,8 @@ impl<'input> Compiler<'input> {
                     | Token::Eq
                     | Token::Var(_)
                     | Token::Number(_)
-                    | Token::String(_) => push_token!(token),
+                    | Token::String(_)
+                    | Token::At => push_token!(token),
                     Token::None | Token::Newline => panic!("compiler internal error!"),
                 }
             } else if self.state.in_funcall > 0 {
@@ -387,7 +410,8 @@ impl<'input> Compiler<'input> {
                     | Token::Eq
                     | Token::Var(_)
                     | Token::Number(_)
-                    | Token::String(_) => push_token!(token),
+                    | Token::String(_)
+                    | Token::At => push_token!(token),
                     Token::None | Token::Newline => panic!("compiler internal error!"),
                 }
             } else {
@@ -418,7 +442,8 @@ impl<'input> Compiler<'input> {
                     | Token::Mod
                     | Token::Colon
                     | Token::NegSign
-                    | Token::Eq => self.oper_tk.push((lloc, token)),
+                    | Token::Eq
+                    | Token::At => self.oper_tk.push((lloc, token)),
                     Token::Var(name) => self.idnt_tk.push((lloc, Expr::Var(name))),
                     Token::Number(data) => self.idnt_tk.push((lloc, Expr::Number(data))),
                     Token::String(str) => self.idnt_tk.push((lloc, Expr::String(str))),
@@ -475,7 +500,7 @@ impl<'input> Compiler<'input> {
         while let Some((lloc, oper)) = self.oper_tk.pop() {
             match oper {
                 Token::None => break,
-                Token::NegSign => {
+                Token::NegSign | Token::At => {
                     let Some((_, idnt)) = self.idnt_tk.pop() else {
                         return Err(CompilerError::new_with_literal(
                             &lloc,
@@ -484,12 +509,12 @@ impl<'input> Compiler<'input> {
                     };
                     if self.state.expr_depth == 0 {
                         self.state.expr_depth += 1;
-                        let inst = Box::new(Inst::Neg(idnt));
+                        let inst = Box::new(Inst::from_single_token(&oper, idnt));
                         self.idnt_tk.push((lloc, Expr::Inst(inst)));
                         continue;
                     }
                     if let Expr::Inst(inst) = idnt {
-                        let mut cur_inst = Inst::Neg(Expr::None);
+                        let mut cur_inst = Inst::from_single_token(&oper, Expr::None);
                         let mut inst = *inst;
                         let mut prv_inst = &mut inst;
                         let expr_depth = self.state.expr_depth;
@@ -508,14 +533,17 @@ impl<'input> Compiler<'input> {
                         if cur_inst.priority() >= prv_inst.priority() {
                             self.state.expr_depth += 1;
                             let (sub_lhs, _sub_rhs) = prv_inst.get_binary_exprs();
-                            cur_inst = Inst::Neg(sub_lhs.clone());
+                            cur_inst = Inst::from_single_token(&oper, sub_lhs.clone());
                             *sub_lhs = Expr::Inst(Box::new(cur_inst));
                         } else {
-                            *prv_inst = Inst::Neg(Expr::Inst(Box::new(prv_inst.clone())));
+                            *prv_inst = Inst::from_single_token(
+                                &oper,
+                                Expr::Inst(Box::new(prv_inst.clone())),
+                            );
                         }
                         self.idnt_tk.push((lloc, Expr::Inst(Box::new(inst))));
                     } else {
-                        let inst = Box::new(Inst::Neg(idnt));
+                        let inst = Box::new(Inst::from_single_token(&oper, idnt));
                         self.idnt_tk.push((lloc, Expr::Inst(inst)));
                     }
                 }
@@ -605,6 +633,17 @@ mod test {
         ($inst:expr) => {
             Expr::Inst(Box::new($inst))
         };
+    }
+
+    #[test]
+    fn at() {
+        let mut compiler = Compiler::new(simple_expr::at());
+        let ast = compiler.compile().unwrap();
+        let correct = vec![Inst::Set(
+            expr_inst!(Inst::Cur(Expr::Var("a"))),
+            Expr::Number("1"),
+        )];
+        assert_eq!(ast, &correct);
     }
 
     #[test]

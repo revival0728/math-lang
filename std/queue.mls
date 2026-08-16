@@ -5,7 +5,7 @@
 
 # init Queue with capacity
 Queue(capacity) = (
-    .(que = Sequence(capacity + 2))
+    .(@que = Sequence(capacity + 2))
     .(que:0 = 2)
     .(que:1 = 2)
     que
@@ -19,7 +19,7 @@ Queue_push(que, value) = $(
 
 # pop value out of Queue and return value
 Queue_pop(que) = (
-    .(value = que:(que:0))
+    .(@value = que:(que:0))
     .(que:0 = (-2 + que:0 + 1 mod len(que) - 2) + 2)
     value
 )

@@ -1,12 +1,12 @@
 # About Math Lang
 
 ## Language Syntax
-```
+```text
 rnum = [raw-number] | [scientific-notation]
 vars = [user-defined-variable] | [builtin-constants]
 idnt = [vars] | [rnum]
 b_op = [+][-][*][/][^][=][mod][:]
-s_op = [-]
+s_op = [-][@]
 expr = [idnt] |
        [fun-call] |
        ([expr]) |
@@ -29,9 +29,17 @@ you should never use variable name with format `__[name]__`, it is used by ENV, 
 
 ## About Operator
 ### Precedence
+```text
+(@) > (s_op)(-) > (:) > (^) > (/) = (*) > (b_op)(-) = (+) > (mod) > (=)
 ```
-(s_op)(-) > (:) > (^) > (/) = (*) > (b_op)(-) = (+) > (mod) > (=)
-```
+
+### The `@` Operator
+the `@` operator pronouces as `current operator` and only applies to variable.
+if the affected variable is not declared in current scope, it will be declared as None type, otherwise return its value.
+
+Usually, for the convenience, it is only used in declaring variables.
+
+For usage exmaple, checkout [examples/cur-operator.mls](/examples/cur-operator.mls)
 
 ### Notice
 - `:`: is for indexing an array
@@ -45,7 +53,7 @@ you should never use variable name with format `__[name]__`, it is used by ENV, 
 ## Type System
 types are automatically determined, depends on precision and size of value
 
-```
+```text
 Sequence | BigNum > f64 > i64 > i32
 ```
 

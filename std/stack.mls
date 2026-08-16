@@ -15,7 +15,7 @@ Stack_push(stk, value) = $(
 
 # pop value out of Stack and return value
 Stack_pop(stk) = (
-    .(value = stk:(stk:0))
+    .(@value = stk:(stk:0))
     .(stk:0 = stk:0 - 1)
     value
 )
