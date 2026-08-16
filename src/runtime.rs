@@ -260,7 +260,7 @@ where
         let lib = self.msys.read_lib(path).map_err(|_| RuntimeError {
             line,
             msg: format!(
-                "cannot read lib {}, may not exist or no export_module()",
+                "cannot read rust library {}, may not exist or no export_module()",
                 mod_name
             ),
         })?;
@@ -869,19 +869,19 @@ where
                 }
                 &"import_rlib" => {
                     let scope = self.locals.last_mut().expect("runtime internal error!");
-                    let Some(module) = scope.get_var("__rlib__") else {
+                    let Some(rlib) = scope.get_var("__rlib__") else {
                         panic!("runtime internal error!")
                     };
-                    if module.borrow().type_ != VarType::None {
+                    if rlib.borrow().type_ != VarType::None {
                         return Err(RuntimeError {
                             line,
                             msg: format!(
                                 "import_rlib() function only accpets literal string but got type {}",
-                                module.borrow().type_
+                                rlib.borrow().type_
                             ),
                         });
                     }
-                    let path_str = module.borrow().to_string();
+                    let path_str = rlib.borrow().to_string();
                     if path_str.is_empty() {
                         return Err(RuntimeError {
                             line,

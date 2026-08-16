@@ -1,7 +1,7 @@
-use crate::env::*;
-use crate::module::FileSystem;
-use crate::runtime::Runtime;
 use clap::Parser;
+use math_lang::env::*;
+use math_lang::module::FileSystem;
+use math_lang::runtime::Runtime;
 use std::io;
 use std::io::prelude::*;
 use std::path::PathBuf;

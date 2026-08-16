@@ -1,15 +1,4 @@
-mod big_uint;
-mod builtin;
 mod cli;
-mod comiler;
-mod env;
-mod error;
-mod lexer;
-mod module;
-mod rmapi;
-mod runtime;
-mod test;
-mod var;
 use clap::Parser;
 use std::thread;
 
