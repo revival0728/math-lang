@@ -90,6 +90,12 @@ impl<'input> Var {
         // TODO: implement BigNum
         None
     }
+    pub fn write_data_unchecked(&mut self, data: &[u8]) {
+        self.data = data.to_vec();
+    }
+    pub fn as_raw_bytes(&self) -> &[u8] {
+        self.data.as_slice()
+    }
 }
 
 macro_rules! impl_from_for_var {
@@ -273,8 +279,15 @@ impl Display for Var {
                 if self.data.is_empty() {
                     write!(f, "")
                 } else {
-                    let s = str::from_utf8(&self.data).expect("runtime internal error!");
-                    write!(f, "{}", s)
+                    write!(
+                        f,
+                        "{}",
+                        match str::from_utf8(&self.data) {
+                            Ok(s) => s,
+                            Err(_) =>
+                                "<#!this None type is not a string literal and cannot be displayed!#>",
+                        }
+                    )
                 }
             }
             VarType::I32 => {

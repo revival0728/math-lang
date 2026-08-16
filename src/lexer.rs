@@ -15,6 +15,7 @@ pub enum Token<'input> {
     LParen,
     RParen,
     Comma,
+    At,
     Newline,
     Var(&'input str),
     Number(&'input str),
@@ -54,6 +55,7 @@ lexer! {
         "," = Token::Comma,
         "mod" = Token::Mod,
         ":" = Token::Colon,
+        "@" = Token::At,
         $newline = Token::Newline,
 
         $special_fun => |lexer| {

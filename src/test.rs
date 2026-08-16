@@ -23,10 +23,19 @@ pub mod examples {
     pub fn module() -> String {
         get("module.mls")
     }
+    pub fn rust_module() -> String {
+        get("rust-module.mls")
+    }
+    pub fn cur_operator() -> String {
+        get("cur-operator.mls")
+    }
 }
 
 #[cfg(test)]
 pub mod simple_expr {
+    pub fn at() -> &'static str {
+        "@a = 1"
+    }
     pub fn neg_idx() -> &'static str {
         "-a:1^10"
     }

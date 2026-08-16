@@ -8,13 +8,13 @@ sort_compare(l, r) = sign(sign(r - l) + 1) - 1
 # The Sequence is defined as sorted for all sort_compare(seq:i, seq:j) == 0, where i < j
 sort(seq) = $(
     .(_sort(seq, l, r) = $(
-        .(m = int32((l + r) / 2))
+        .(@m = int32((l + r) / 2))
         .(else(r - l - 1)(
             .(_sort(seq, l, m))
             .(_sort(seq, m, r))
         ))
-        .(seql = Sequence(m - l))
-        .(seqr = Sequence(r - m))
+        .(@seql = Sequence(m - l))
+        .(@seqr = Sequence(r - m))
         .(copy(from, to, fidx, tidx, len) = $(
             else(len - tidx)(
                 .(to:tidx = from:fidx)
@@ -23,12 +23,12 @@ sort(seq) = $(
         ))
         .(copy(seq, seql, l, 0, m - l))
         .(copy(seq, seqr, m, 0, r - m))
-        .(ptr = l)
-        .(ptrl = 0)
-        .(ptrr = 0)
+        .(@ptr = l)
+        .(@ptrl = 0)
+        .(@ptrr = 0)
         .(merge() = $(
             else(sign(m - l - ptrl)sign(r - m - ptrr))(
-                .(cmp = sort_compare(seql:ptrl, seqr:ptrr))
+                .(@cmp = sort_compare(seql:ptrl, seqr:ptrr))
                 .(if(cmp)(
                     .(seq:ptr = seql:ptrl)
                     .(ptrl = ptrl + 1)
@@ -60,8 +60,8 @@ is_sorted(seq) = (
     .(_is_sorted(seq, idx, len) = (
         if(len - idx)(true) +
         else(len - idx)(
-            .(nxt = _is_sorted(seq, idx + 1, len))
-            .(cur = sort_compare(seq:(idx - 1), seq:idx))
+            .(@nxt = _is_sorted(seq, idx + 1, len))
+            .(@cur = sort_compare(seq:(idx - 1), seq:idx))
             sign(nxt + cur)
         )
     ))
@@ -115,12 +115,12 @@ descending(seq, value) = $(
 
 # do binary search to the Seqeunce and find first matches, return index of value in Sequence
 bsearch(seq, value) = (
-    .(l = 0)
-    .(r = len(seq))
+    .(@l = 0)
+    .(@r = len(seq))
     .(_bsearch() = (
         if(sign(r - l) - 1)(
-            .(m = int32((l + r) / 2))
-            .(comp = sort_compare(value, seq:m))
+            .(@m = int32((l + r) / 2))
+            .(@comp = sort_compare(value, seq:m))
             .(if(comp)(r = m))
             .(else(comp)(l = m + 1))
             .(_bsearch())
@@ -132,7 +132,7 @@ bsearch(seq, value) = (
 
 # find the first matches, return index of value in Sequence
 first_of(seq, value) = (
-    .(index = 0)
+    .(@index = 0)
     .(_first_of(seq, len) = $(
         else(len - index)else(seq:index - value)(
             .(index = index + 1)
@@ -145,7 +145,7 @@ first_of(seq, value) = (
 
 # find the last matches, return index of value in Sequence
 last_of(seq, value) = (
-    .(index = len(seq) - 1)
+    .(@index = len(seq) - 1)
     .(_last_of(seq, -1) = $(
         else(len - index)else(seq:index - value)(
             .(index = index - 1)

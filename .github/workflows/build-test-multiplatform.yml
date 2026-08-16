@@ -30,7 +30,18 @@ jobs:
       run: rustup --version
 
     - name: Build
-      run: cargo build --profile ${{ matrix.build_type }} --verbose
+      run: cargo build --workspace --profile ${{ matrix.build_type }} --verbose
+
+    - name: List build artifacts
+      shell: bash
+      run: ls -lh target/release
+
+    - name: Rename test artifacts
+      shell: bash
+      run: |
+        if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+          mv target/release/rlib.dll target/release/librlib.dll
+        fi
 
     - name: Test
-      run: cargo test --verbose
+      run: cargo test --workspace --verbose

@@ -1,12 +1,4 @@
-mod big_uint;
 mod cli;
-mod comiler;
-mod env;
-mod error;
-mod lexer;
-mod runtime;
-mod test;
-mod var;
 use clap::Parser;
 use std::thread;
 

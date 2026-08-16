@@ -1,6 +1,7 @@
-use crate::env::*;
-use crate::runtime::Runtime;
 use clap::Parser;
+use math_lang::env::*;
+use math_lang::module::FileSystem;
+use math_lang::runtime::Runtime;
 use std::io;
 use std::io::prelude::*;
 use std::path::PathBuf;
@@ -42,7 +43,7 @@ pub struct CLI<'cli> {
     info: String,
     line_prefix: String,
     input: Vec<Box<str>>,
-    runtime: Runtime<'cli>,
+    runtime: Runtime<'cli, FileSystem>,
     cur_output: usize,
 }
 
