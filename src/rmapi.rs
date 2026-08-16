@@ -25,6 +25,8 @@
 //! ```
 //!
 //! ## Rust Module Define Example
+//!
+//! `src/lib.rs`:
 //! ```
 //! use math_lang::prelude::*;
 //!
@@ -52,11 +54,25 @@
 //! }
 //! ```
 //!
-//! For more examples please check out the source of [`crate::builtin`]
+//! `Cargo.toml`:
+//! ```
+//! [package]
+//! name = "rlib"
+//! version = "0.1.0"
+//! edition = "2024"
+//!
+//! [dependencies]
+//! math-lang = { path = "path to math-lang crate" }
+//!
+//! [lib]
+//! crate-type = ["dylib"]
+//! ```
+//!
+//! For more examples please checks out the source of [`crate::builtin`]
 //!
 //! ## NOTICE
 //! - The file extension of dynamic library could be arbitary, but highly recommends that `windows` uses `.dll`, `linux` uses `.so` and `macos` uses `.dylib`
-//! - The rust library module should use the Rust compiler with the same version as math-lang binary
+//! - The rust library module should be compiled with the same Rust compiler version as math-lang binary
 use crate::runtime::{Fun, Scope};
 use crate::var::{Var, VarType};
 use std::cell::RefCell;
