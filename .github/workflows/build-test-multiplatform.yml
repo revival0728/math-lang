@@ -32,5 +32,8 @@ jobs:
     - name: Build
       run: cargo build --workspace --profile ${{ matrix.build_type }} --verbose
 
+    - name: List Build Artifacts
+      run: ls -lh target/release
+
     - name: Test
       run: cargo test --workspace --verbose
