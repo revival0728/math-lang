@@ -3,7 +3,7 @@
 //! # Rust Module API
 //! This module provides Rust APIs for math-lang rust library module
 //!
-//! ## Write Rust Functions for math-lang Runtime
+//! ## Writing Rust Functions for math-lang Runtime
 //! The function must be type [`RMFunPtr`] which is `fn(ScopeApi) -> Result<Option<VarApi>, String>`
 //! where `String` contains error message returning to math-lang runtime.
 //!
