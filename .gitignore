@@ -1,4 +1,9 @@
 # Rust
 /target
 /analyze
-/std/test/test.mls
+
+# Test script
+*test.mls
+
+# Samply analysis
+profile.json.gz

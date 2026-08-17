@@ -61,14 +61,8 @@ please checkout the [document](/docs/README.md)
 2. run `cargo doc --open` to checkout the document
 
 ## Development
-### Main Changes
-- massively improved recursion performance
-- support rust library module
-- added `import_rlib()`
-- added new operator `@`, for accessing and declaring variables only in current scope
-
-### Details Without Impact
-Builtin functions are now has two types, `rust function` and `runtime function`. Only `Module Relative Functions` and `Output Functions` are `runtime function`, the remainings are `rust function`. `rust function` works the same as external rust module while `runtime function` works the same as old builtin functions. The key difference between two types of builtins is that `runtime function` is dependent to the runtime and can be called directly from Rust while `rust function` is independent which works just like a math function. This change will not has actual impact on the execution.
+### Big fixed
+- `len()` was not exported from src/builtin.rs
 
 ### TODO
 - [ ] implement BigNum, fix i64 and f64 overflow problem (rarely happened)
@@ -79,3 +73,5 @@ Builtin functions are now has two types, `rust function` and `runtime function`.
 - [ ] add custom type support (parsed as None but bytes has meanings)
 - [ ] fix cannot access parent scope with same function name (?)
 - [ ] flatten inst, flat Inst::Mul with new inst Inst::Jump(cond, dest)
+- [ ] Cargo install support
+- [ ] package manager

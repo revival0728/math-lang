@@ -262,6 +262,7 @@ export! {
     .(x) = special::one;
     int32(x) = mtype::int32;
     Sequence(len) = sequence::new;
+    len(seq) = sequence::len;
     abort(msg) = control::abort;
     assert_eq(lhs, rhs, msg) = control::assert_eq;
     assert_ne(lhs, rhs, msg) = control::assert_ne;
