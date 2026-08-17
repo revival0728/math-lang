@@ -10,9 +10,6 @@ readme = "README.md"
 
 [profile.release]
 opt-level = 2
-lto = true
-codegen-units = 1
-strip = true
 
 [dependencies]
 lexgen = "0.16.0"
