@@ -94,6 +94,36 @@ impl Sub<&Self> for BigUint {
     }
 }
 
+impl MulAssign<&Self> for BigUint {
+    fn mul_assign(&mut self, rhs: &Self) {
+        let mut res = BigUint::new();
+        for bit in rhs.bits.iter() {
+            if bit == 1 {
+                res += self;
+            }
+            self.bits <<= 1;
+        }
+        *self = res;
+    }
+}
+
+impl Mul<Self> for &BigUint {
+    type Output = BigUint;
+    fn mul(self, rhs: Self) -> Self::Output {
+        let mut ret = self.clone();
+        ret *= rhs;
+        ret
+    }
+}
+
+impl Mul<&Self> for BigUint {
+    type Output = BigUint;
+    fn mul(mut self, rhs: &Self) -> Self::Output {
+        self *= rhs;
+        self
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -145,6 +175,28 @@ mod test {
         assert_eq!(
             &a - &large,
             BigUint::from(UintBits::from(vec![0, u64::MAX]))
+        );
+    }
+
+    #[test]
+    fn mul_assign() {
+        let mut a = BigUint::from(2_u32);
+        let b = BigUint::from(3_u32);
+        a *= &b;
+        assert_eq!(a, BigUint::from(6_u32));
+    }
+
+    #[test]
+    fn mul() {
+        let a = BigUint::from(2_u32);
+        let b = BigUint::from(3_u32);
+        let c = BigUint::from(1_u32);
+        let large = BigUint::from(UintBits::from(vec![1 | (1_u64 << 63), 1]));
+        assert_eq!(&a * &b, BigUint::from(6_u32));
+        assert_eq!(&a * &b * &c, BigUint::from(6_u32));
+        assert_eq!(
+            &b * &large,
+            BigUint::from(UintBits::from(vec![3 | (1_u64 << 63), 4]))
         );
     }
 }
