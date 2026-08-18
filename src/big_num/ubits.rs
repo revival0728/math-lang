@@ -1,5 +1,5 @@
 use std::convert::From;
-use std::fmt::Display;
+use std::iter::Iterator;
 use std::ops::{
     BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Not, Shl, ShlAssign, Shr,
     ShrAssign,
@@ -10,6 +10,13 @@ use std::ops::{
 /// UintBits stores data in little endian.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UintBits(Vec<u64>);
+
+#[derive(Debug, Clone)]
+pub struct BitIter<'a> {
+    viter: std::slice::Iter<'a, u64>,
+    bits: Option<&'a u64>,
+    i: u8,
+}
 
 impl UintBits {
     pub fn new() -> Self {
@@ -26,6 +33,44 @@ impl Default for UintBits {
 impl From<Vec<u64>> for UintBits {
     fn from(value: Vec<u64>) -> Self {
         Self(value)
+    }
+}
+
+impl<'a> BitIter<'a> {
+    pub fn new(vec: &'a Vec<u64>) -> Self {
+        Self {
+            viter: vec.iter(),
+            bits: None,
+            i: 0,
+        }
+    }
+}
+
+impl<'a> Iterator for BitIter<'a> {
+    type Item = u8;
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.i >= 64 || self.bits.is_none() {
+            self.i = 0;
+            self.bits = self.viter.next();
+            if let Some(bits) = self.bits {
+                let i = self.i;
+                self.i += 1;
+                Some(((bits >> i) & 1) as u8)
+            } else {
+                None
+            }
+        } else {
+            let bits = self.bits.unwrap();
+            let i = self.i;
+            self.i += 1;
+            Some(((bits >> i) & 1) as u8)
+        }
+    }
+}
+
+impl<'a> UintBits {
+    pub fn iter(&'a self) -> BitIter<'a> {
+        BitIter::new(&self.0)
     }
 }
 
@@ -64,12 +109,21 @@ impl UintBits {
     pub fn set_bits(&mut self, index: usize, value: u64) {
         self.0[index] = value;
     }
-    /// align inner data bits with 0
-    pub fn align(&mut self, other: &Self) {
+    /// align most significant side of inner data with bit 0
+    pub fn align_most(&mut self, other: &Self) {
         if self.0.len() < other.0.len() {
             self.0
                 .extend(vec![0; other.0.len() - self.0.len()].into_iter());
         }
+    }
+    /// align least significant side of inner data with bit 0
+    pub fn align_least(&mut self, other: &Self) {
+        self.0.reverse();
+        if self.0.len() < other.0.len() {
+            self.0
+                .extend(vec![0; other.0.len() - self.0.len()].into_iter());
+        }
+        self.0.reverse();
     }
     pub fn fold_bits<B>(&self, init: B, f: impl FnMut(B, &u64) -> B) -> B {
         self.0.iter().fold(init, f)
@@ -83,7 +137,7 @@ macro_rules! impl_bit_oper_assgin {
     ($trait:ident, $fname:ident, $oper:tt) => {
         impl $trait<&Self> for UintBits {
             fn $fname(&mut self, rhs: &Self) {
-                self.align(rhs);
+                self.align_most(rhs);
                 for (sb, rb) in self.0.iter_mut().zip(rhs.0.iter()) {
                     *sb $oper rb;
                 }
@@ -348,7 +402,7 @@ mod test {
     fn align() {
         let mut lhs = UintBits::new();
         let rhs = UintBits::from(vec![0, 0]);
-        lhs.align(&rhs);
+        lhs.align_most(&rhs);
         assert_eq!(lhs.0.len(), 2);
         assert_eq!(lhs, rhs);
     }
@@ -363,6 +417,16 @@ mod test {
         assert_eq!(bits.len(), 1 * 64);
         bits.truncate(1);
         assert_eq!(bits.len(), 1 * 64);
+    }
+
+    #[test]
+    fn iter() {
+        let bits = UintBits::from(vec![0, u64::MAX]);
+        let bit_arr = bits.iter().collect::<Vec<u8>>();
+        let mut correct = Vec::new();
+        correct.extend(vec![0_u8; 64].into_iter());
+        correct.extend(vec![1_u8; 64].into_iter());
+        assert_eq!(bit_arr, correct);
     }
 
     macro_rules! create_bit_oper_assign_test {
