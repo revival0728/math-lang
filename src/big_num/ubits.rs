@@ -36,8 +36,12 @@ impl UintBits {
             self.0.pop();
         }
     }
+    pub fn truncate(&mut self, len: usize) {
+        self.0
+            .truncate((len >> 6) + ((len & ((1 << 6) - 1) != 0) as usize))
+    }
     pub fn len(&self) -> usize {
-        self.0.len() * 64
+        self.0.len() << 6
     }
     pub fn set(&mut self, index: usize) {
         let idx = index / 64;
@@ -347,6 +351,18 @@ mod test {
         lhs.align(&rhs);
         assert_eq!(lhs.0.len(), 2);
         assert_eq!(lhs, rhs);
+    }
+
+    #[test]
+    fn len_and_truncate() {
+        let mut bits = UintBits::from(vec![1; 4]);
+        assert_eq!(bits.len(), 4 * 64);
+        bits.truncate(65);
+        assert_eq!(bits.len(), 2 * 64);
+        bits.truncate(64);
+        assert_eq!(bits.len(), 1 * 64);
+        bits.truncate(1);
+        assert_eq!(bits.len(), 1 * 64);
     }
 
     macro_rules! create_bit_oper_assign_test {

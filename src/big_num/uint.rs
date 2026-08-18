@@ -1,6 +1,6 @@
 use super::ubits::UintBits;
 use std::convert::From;
-use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Sub, SubAssign};
+use std::ops::{Add, AddAssign, Mul, MulAssign, Sub, SubAssign};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct BigUint {
@@ -67,11 +67,13 @@ impl Add<&Self> for BigUint {
 impl SubAssign<&Self> for BigUint {
     fn sub_assign(&mut self, rhs: &Self) {
         let mut carry = rhs.bits.clone();
-        while !carry.all_zero() && carry.len() <= self.bits.len() {
+        let max_len = std::cmp::max(carry.len(), self.bits.len()) << 1;
+        while !carry.all_zero() && carry.len() <= max_len {
             let nxt_carry = (((&self.bits) ^ (&carry)) & (&carry)) << 1;
             self.bits ^= &carry;
             carry = nxt_carry;
         }
+        self.bits.truncate(max_len >> 1);
     }
 }
 
@@ -140,5 +142,9 @@ mod test {
         assert_eq!(&c - &b - &a, BigUint::from(0_u32));
         assert_eq!(&a - &b, BigUint::from(u64::MAX));
         assert_eq!(&large - &a, BigUint::from(UintBits::from(vec![0, 1])));
+        assert_eq!(
+            &a - &large,
+            BigUint::from(UintBits::from(vec![0, u64::MAX]))
+        );
     }
 }
