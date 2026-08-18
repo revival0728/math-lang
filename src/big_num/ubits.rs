@@ -9,7 +9,7 @@ use std::ops::{
 ///
 /// UintBits stores data in little endian.
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct UintBits(Vec<u64>);
+pub struct UintBits(Vec<u64>);
 
 impl UintBits {
     pub fn new() -> Self {
@@ -36,17 +36,57 @@ impl UintBits {
             self.0.pop();
         }
     }
+    pub fn len(&self) -> usize {
+        self.0.len() * 64
+    }
+    pub fn set(&mut self, index: usize) {
+        let idx = index / 64;
+        let bit = index % 64;
+        if self.0.len() <= idx {
+            self.0.extend(vec![0; idx - self.0.len() + 1].into_iter());
+        }
+        self.0[idx] |= 1_u64 << bit;
+        self.shrink();
+    }
+    pub fn reset(&mut self, index: usize) {
+        let idx = index / 64;
+        let bit = index % 64;
+        if self.0.len() <= idx {
+            self.0.extend(vec![0; idx - self.0.len() + 1].into_iter());
+        }
+        self.0[idx] &= !(1_u64 << bit);
+        self.shrink();
+    }
+    pub fn set_bits(&mut self, index: usize, value: u64) {
+        self.0[index] = value;
+    }
+    /// align inner data bits with 0
+    pub fn align(&mut self, other: &Self) {
+        if self.0.len() < other.0.len() {
+            self.0
+                .extend(vec![0; other.0.len() - self.0.len()].into_iter());
+        }
+    }
+    pub fn fold_bits<B>(&self, init: B, f: impl FnMut(B, &u64) -> B) -> B {
+        self.0.iter().fold(init, f)
+    }
+    pub fn all_zero(&self) -> bool {
+        self.fold_bits(true, |prev, bits| prev & (*bits == 0))
+    }
 }
 
 macro_rules! impl_bit_oper_assgin {
     ($trait:ident, $fname:ident, $oper:tt) => {
-        impl $trait for UintBits {
-            fn $fname(&mut self, rhs: Self) {
+        impl $trait<&Self> for UintBits {
+            fn $fname(&mut self, rhs: &Self) {
+                self.align(rhs);
                 for (sb, rb) in self.0.iter_mut().zip(rhs.0.iter()) {
                     *sb $oper rb;
                 }
-                if self.0.len() < rhs.0.len() {
-                    self.0.extend_from_slice(&rhs.0[self.0.len()..rhs.0.len()]);
+                if self.0.len() > rhs.0.len() {
+                    for bits in self.0[rhs.0.len()..].iter_mut() {
+                        *bits $oper 0;
+                    }
                 }
                 self.shrink();
             }
@@ -59,11 +99,28 @@ impl_bit_oper_assgin!(BitXorAssign, bitxor_assign, ^=);
 
 macro_rules! impl_bit_oper {
     ($trait:ident, $fname:ident, $oper_assign:tt) => {
-        impl $trait for UintBits {
+        impl $trait<Self> for &UintBits {
             type Output = UintBits;
             fn $fname(self, rhs: Self) -> Self::Output {
                 let mut ret = self.clone();
                 ret $oper_assign rhs;
+                ret.shrink();
+                ret
+            }
+        }
+        impl $trait<&Self> for UintBits {
+            type Output = UintBits;
+            fn $fname(mut self, rhs: &Self) -> Self::Output {
+                self $oper_assign &rhs;
+                self.shrink();
+                self
+            }
+        }
+        impl $trait<UintBits> for &UintBits {
+            type Output = UintBits;
+            fn $fname(self, rhs: UintBits) -> Self::Output {
+                let mut ret = self.clone();
+                ret $oper_assign &rhs;
                 ret.shrink();
                 ret
             }
@@ -74,14 +131,20 @@ impl_bit_oper!(BitAnd, bitand, &=);
 impl_bit_oper!(BitOr, bitor, |=);
 impl_bit_oper!(BitXor, bitxor, ^=);
 
-impl Not for UintBits {
+impl UintBits {
+    pub fn not_self(&mut self) {
+        for bits in self.0.iter_mut() {
+            *bits = !(*bits);
+        }
+        self.shrink();
+    }
+}
+
+impl Not for &UintBits {
     type Output = UintBits;
     fn not(self) -> Self::Output {
         let mut ret = self.clone();
-        for bits in ret.0.iter_mut() {
-            *bits = !(*bits);
-        }
-        ret.shrink();
+        ret.not_self();
         ret
     }
 }
@@ -115,6 +178,10 @@ macro_rules! impl_shl_assign {
                     *bits |= carry;
                     carry = nxt_carry;
                 }
+                if carry != 0 {
+                    self.0.push(carry);
+                }
+                self.shrink();
             }
         }
     };
@@ -136,12 +203,19 @@ impl_shl_assign!(&usize, *);
 
 macro_rules! impl_shl {
     ($rhs_type:ty) => {
-        impl Shl<$rhs_type> for UintBits {
+        impl Shl<$rhs_type> for &UintBits {
             type Output = UintBits;
             fn shl(self, rhs: $rhs_type) -> Self::Output {
                 let mut ret = self.clone();
                 ret <<= rhs;
                 ret
+            }
+        }
+        impl Shl<$rhs_type> for UintBits {
+            type Output = UintBits;
+            fn shl(mut self, rhs: $rhs_type) -> Self::Output {
+                self <<= rhs;
+                self
             }
         }
     };
@@ -217,12 +291,19 @@ impl_shr_assign!(&usize, *);
 
 macro_rules! impl_shr {
     ($rhs_type:ty) => {
-        impl Shr<$rhs_type> for UintBits {
+        impl Shr<$rhs_type> for &UintBits {
             type Output = UintBits;
             fn shr(self, rhs: $rhs_type) -> Self::Output {
                 let mut ret = self.clone();
                 ret >>= rhs;
                 ret
+            }
+        }
+        impl Shr<$rhs_type> for UintBits {
+            type Output = UintBits;
+            fn shr(mut self, rhs: $rhs_type) -> Self::Output {
+                self >>= rhs;
+                self
             }
         }
     };
@@ -246,14 +327,38 @@ impl_shr!(&usize);
 mod test {
     use super::*;
 
+    #[test]
+    fn set_and_reset() {
+        let mut bits = UintBits::new();
+        bits.set(0);
+        assert_eq!(bits, UintBits::from(vec![1]));
+        bits.reset(0);
+        assert_eq!(bits, UintBits::from(vec![0]));
+        bits.set(64);
+        assert_eq!(bits, UintBits::from(vec![0, 1]));
+        bits.reset(64);
+        assert_eq!(bits, UintBits::from(vec![0]));
+    }
+
+    #[test]
+    fn align() {
+        let mut lhs = UintBits::new();
+        let rhs = UintBits::from(vec![0, 0]);
+        lhs.align(&rhs);
+        assert_eq!(lhs.0.len(), 2);
+        assert_eq!(lhs, rhs);
+    }
+
     macro_rules! create_bit_oper_assign_test {
         ($name:ident, $oper:tt, $oper_assign:tt) => {
             #[test]
             fn $name() {
                 let mut lhs = UintBits::from(vec![1]);
                 let rhs = UintBits::from(vec![2, 1]);
-                lhs $oper_assign rhs;
-                assert_eq!(lhs, UintBits::from(vec![1 $oper 2, 1]));
+                lhs $oper_assign &rhs;
+                let mut ans = UintBits::from(vec![1 $oper 2, 1 $oper 0]);
+                ans.shrink();
+                assert_eq!(lhs, ans);
             }
         };
     }
@@ -267,8 +372,10 @@ mod test {
             fn $name() {
                 let lhs = UintBits::from(vec![1]);
                 let rhs = UintBits::from(vec![2, 1]);
-                let ret = lhs $oper rhs;
-                assert_eq!(ret, UintBits::from(vec![1 $oper 2, 1]));
+                let ret = (&lhs) $oper (&rhs);
+                let mut ans = UintBits::from(vec![1 $oper 2, 1 $oper 0]);
+                ans.shrink();
+                assert_eq!(ret, ans);
             }
         };
     }
@@ -281,7 +388,7 @@ mod test {
         let inner = vec![1, 2];
         let ubits = UintBits::from(inner.clone());
         assert_eq!(ubits, UintBits::from(inner));
-        assert_eq!(!ubits, UintBits::from(vec![!1, !2]));
+        assert_eq!(!(&ubits), UintBits::from(vec![!1, !2]));
     }
 
     #[test]
@@ -292,6 +399,9 @@ mod test {
         ubits.0[0] = 1;
         ubits <<= 1;
         assert_eq!(ubits, UintBits::from(vec![2]));
+        ubits.0 = vec![u64::MAX];
+        ubits <<= 1;
+        assert_eq!(ubits, UintBits::from(vec![u64::MAX - 1, 1]));
         ubits.0 = vec![1234, u64::MAX, 5678];
         ubits <<= 64 * 3 + 2;
         assert_eq!(
@@ -303,12 +413,12 @@ mod test {
     #[test]
     fn shl() {
         let mut ubits = UintBits::new();
-        ubits = ubits << 23;
+        ubits = (&ubits) << 23;
         assert_eq!(ubits, UintBits::from(vec![0]));
         ubits.0[0] = 1;
-        ubits = ubits << 1;
+        ubits = (&ubits) << 1;
         assert_eq!(ubits, UintBits::from(vec![2]));
-        ubits = ubits << (64 * 3 + 2);
+        ubits = (&ubits) << (64 * 3 + 2);
         assert_eq!(ubits, UintBits::from(vec![0, 0, 0, 2 << 2]));
     }
 
@@ -328,13 +438,13 @@ mod test {
     #[test]
     fn shr() {
         let mut ubits = UintBits::new();
-        ubits = ubits >> 23;
+        ubits = (&ubits) >> 23;
         assert_eq!(ubits, UintBits::from(vec![0]));
         ubits.0 = vec![0923];
-        ubits = ubits >> 1;
+        ubits = (&ubits) >> 1;
         assert_eq!(ubits, UintBits::from(vec![0923 >> 1]));
         ubits.0 = vec![0, 0, 0, 1234, 3];
-        ubits = ubits >> (64 * 3 + 2);
+        ubits = (&ubits) >> (64 * 3 + 2);
         assert_eq!(ubits, UintBits::from(vec![(1234 >> 2) | (3_u64 << 62)]));
     }
 }
