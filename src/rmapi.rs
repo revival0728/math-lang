@@ -175,7 +175,7 @@ pub enum Number {
 }
 
 /// Rust Module API Type to interact with math-lang runtime
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Hash)]
 pub enum RMApiType {
     I32,
     I64,
@@ -417,6 +417,10 @@ impl VarApi {
             VarType::None => RMApiType::ByteArray,
         }
     }
+    pub fn as_bytes(&self) -> std::cell::Ref<'_, [u8]> {
+        let vf = self.rref.borrow();
+        std::cell::Ref::map(vf, |v| v.as_raw_bytes())
+    }
     /// Set variable with raw bytes.
     ///
     /// This function will let the variable become [`RMApiType::ByteArray`] for the safety of runtime.
@@ -544,6 +548,45 @@ impl From<&str> for VarApi {
     }
 }
 
+impl From<String> for VarApi {
+    fn from(value: String) -> Self {
+        let mut var = Var::default();
+        var.write_data_unchecked(value.as_bytes());
+        Self {
+            rref: Rc::new(RefCell::new(var)),
+        }
+    }
+}
+
+impl From<&[u8]> for VarApi {
+    fn from(value: &[u8]) -> Self {
+        let mut var = Var::default();
+        var.write_data_unchecked(value);
+        Self {
+            rref: Rc::new(RefCell::new(var)),
+        }
+    }
+}
+
+impl From<Vec<u8>> for VarApi {
+    fn from(value: Vec<u8>) -> Self {
+        let mut var = Var::default();
+        var.write_data_unchecked(&value.into_boxed_slice());
+        Self {
+            rref: Rc::new(RefCell::new(var)),
+        }
+    }
+}
+
+impl From<RMHeapInfo> for VarApi {
+    fn from(value: RMHeapInfo) -> Self {
+        let var = Var::new_sequence((value.mstart, value.mend), (value.sindex, value.sid));
+        Self {
+            rref: Rc::new(RefCell::new(var)),
+        }
+    }
+}
+
 impl TryInto<String> for VarApi {
     type Error = RMApiType;
     fn try_into(self) -> Result<String, Self::Error> {
@@ -562,15 +605,6 @@ impl TryInto<Vec<u8>> for VarApi {
             Ok(self.rref.borrow().as_raw_bytes().to_vec())
         } else {
             Err(self.vtype())
-        }
-    }
-}
-
-impl From<RMHeapInfo> for VarApi {
-    fn from(value: RMHeapInfo) -> Self {
-        let var = Var::new_sequence((value.mstart, value.mend), (value.sindex, value.sid));
-        Self {
-            rref: Rc::new(RefCell::new(var)),
         }
     }
 }

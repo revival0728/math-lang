@@ -128,6 +128,7 @@ checkout [example](/examples/module.mls)
 | name | document |
 |------|----------|
 | int32(x) | `trunc(x)` function but guarantees return type is I32 or else gets RuntimeError |
+| type(x) | return type of argument `x` as literal string, compare and check with function `hash(x)` |
 
 ### Module Relative Functions
 
@@ -189,6 +190,12 @@ checkout [example](/examples/module.mls)
 | cbrt(x) | `Rust` function, return cube root of the argument |
 
 - using `f64::builtin(x)` for all Rust primitive types
+
+### Utility Functions
+
+| name | document |
+|------|----------|
+| hash(x) | return hash value of argument `x` as type I64, guarantee that hash value from `type(x)` will not collide |
 
 ## About Environment Variable (ENV)
 it is possible to read or get ENV by function `__[ENV_name]__()`, where `[ENV_name]` only contains lower case alphabets

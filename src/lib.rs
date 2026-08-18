@@ -5,7 +5,7 @@
 //! Please checkout [`Rust Module API`](rmapi) document.
 //!
 #![doc = include_str!("../docs/README.md")]
-mod big_uint;
+mod big_num;
 pub mod builtin;
 pub mod comiler;
 pub mod env;

@@ -1009,10 +1009,43 @@ where
 #[cfg(test)]
 mod test {
     use super::Runtime;
-    use crate::{
-        module::FileSystem,
-        test::{examples, simple_expr},
-    };
+    use crate::module::FileSystem;
+    use crate::test::{examples, simple_expr};
+
+    #[test]
+    fn unique_type_hash() {
+        use crate::var::{Var, VarType};
+        let mut runtime = Runtime::<FileSystem>::new();
+
+        fn add_var<'f>(runtime: &mut Runtime<'f, FileSystem>, name: &'f str, tp: VarType) {
+            let mut var = Var::none();
+            var.type_ = tp;
+            runtime.locals.last_mut().unwrap().add_var(name, var);
+        }
+        add_var(&mut runtime, "i32", VarType::I32);
+        add_var(&mut runtime, "i64", VarType::I64);
+        add_var(&mut runtime, "f64", VarType::F64);
+        add_var(&mut runtime, "seq", VarType::Sequence);
+        add_var(&mut runtime, "big", VarType::BigNum);
+        add_var(&mut runtime, "nil", VarType::None);
+
+        runtime.execute("hash(type(i32))").unwrap();
+        runtime.execute("hash(type(i64))").unwrap();
+        runtime.execute("hash(type(f64))").unwrap();
+        runtime.execute("hash(type(seq))").unwrap();
+        runtime.execute("hash(type(nil))").unwrap();
+        runtime.execute("hash(type(big))").unwrap();
+
+        let hvs = runtime.output.clone();
+        for (i, hvi) in hvs.iter().enumerate() {
+            for (j, hvj) in hvs.iter().enumerate() {
+                if i == j {
+                    continue;
+                }
+                assert_ne!(hvi, hvj);
+            }
+        }
+    }
 
     #[test]
     fn cur_operator() {

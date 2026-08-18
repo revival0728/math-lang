@@ -140,6 +140,10 @@ pub mod mtype {
             Err(format!("cannot convert {} to I32", x))
         }
     }
+    pub fn typef(sapi: ScopeApi) -> RMFunRetType {
+        let x = sapi.get_current_var("x").unwrap();
+        Ok(Some(VarApi::from(x.vtype().to_string())))
+    }
 }
 
 pub mod sequence {
@@ -225,6 +229,21 @@ pub mod control {
     }
 }
 
+pub mod utility {
+    use super::*;
+    use std::hash::{DefaultHasher, Hash, Hasher};
+    pub fn hash(sapi: ScopeApi) -> RMFunRetType {
+        let x = sapi.get_current_var("x").unwrap();
+        let mut hasher = DefaultHasher::new();
+        let bytes = x.as_bytes();
+        let vtype = x.vtype();
+        bytes.hash(&mut hasher);
+        vtype.hash(&mut hasher);
+        let hv = hasher.finish().cast_signed();
+        Ok(Some(VarApi::from(hv)))
+    }
+}
+
 #[unsafe(export_name = "export_builtin_module")]
 export! {
     pi = F64(consts::PI);
@@ -261,9 +280,11 @@ export! {
     $(x) = special::none;
     .(x) = special::one;
     int32(x) = mtype::int32;
+    type(x) = mtype::typef;
     Sequence(len) = sequence::new;
     len(seq) = sequence::len;
     abort(msg) = control::abort;
     assert_eq(lhs, rhs, msg) = control::assert_eq;
     assert_ne(lhs, rhs, msg) = control::assert_ne;
+    hash(x) = utility::hash;
 }
