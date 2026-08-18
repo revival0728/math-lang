@@ -61,14 +61,14 @@ please checkout the [document](/docs/README.md)
 2. run `cargo doc --open` to checkout the document
 
 ## Development
-### Big fixed
-- `len()` was not exported from src/builtin.rs
+### Main Changes
+- added builtin function `type(x)`
+- added builtin function `hash(x)`
 
 ### TODO
 - [ ] implement BigNum, fix i64 and f64 overflow problem (rarely happened)
 - [ ] improve error message
 - [ ] fix tail call optimization to recursion
-- [ ] add type(), hash()
 - [ ] add function info expression
 - [ ] add custom type support (parsed as None but bytes has meanings)
 - [ ] fix cannot access parent scope with same function name (?)
