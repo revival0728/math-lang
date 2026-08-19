@@ -166,9 +166,7 @@ impl BigUint {
         }
         let mut rhs = rhs.clone();
         let qlen = sbl - rbl;
-        for _ in 0..qlen {
-            rhs.bits <<= 1;
-        }
+        rhs.bits <<= qlen;
         let mut q = Self::new();
         for i in 0..=qlen {
             if *self >= rhs {
