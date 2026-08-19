@@ -1,6 +1,12 @@
+use crate::builtin::mtype;
+
 use super::ubits::UintBits;
+use std::cmp::Ord;
 use std::convert::From;
-use std::ops::{Add, AddAssign, Mul, MulAssign, Sub, SubAssign};
+use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Rem, RemAssign, Sub, SubAssign};
+
+// TODO: div_rem, Div, Rem, div_num((Self, (Self, usize)) -> (integer, (decimal, -2^N)))
+// TODO: std::fmt::Display using double dabble and reverse double dabble
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct BigUint {
@@ -35,6 +41,32 @@ macro_rules! impl_from {
 impl_from!(u8);
 impl_from!(u32);
 impl_from!(u64);
+
+impl Ord for BigUint {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        use std::cmp::Ordering;
+        match self.bits.len().cmp(&other.bits.len()) {
+            Ordering::Greater => Ordering::Greater,
+            Ordering::Less => Ordering::Less,
+            Ordering::Equal => {
+                for (sb, ob) in self.bits.iter().rev().zip(other.bits.iter().rev()) {
+                    match sb.cmp(&ob) {
+                        Ordering::Greater => return Ordering::Greater,
+                        Ordering::Less => return Ordering::Less,
+                        Ordering::Equal => continue,
+                    };
+                }
+                Ordering::Equal
+            }
+        }
+    }
+}
+
+impl PartialOrd for BigUint {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
 
 impl AddAssign<&Self> for BigUint {
     fn add_assign(&mut self, rhs: &Self) {
@@ -124,9 +156,105 @@ impl Mul<&Self> for BigUint {
     }
 }
 
+impl BigUint {
+    /// return quotient while self is remainder
+    pub fn div_rem_self(&mut self, rhs: &Self) -> Self {
+        let sbl = self.bits.bit_len();
+        let rbl = rhs.bits.bit_len();
+        if sbl < rbl {
+            return Self::new();
+        }
+        let mut rhs = rhs.clone();
+        let qlen = sbl - rbl;
+        for _ in 0..qlen {
+            rhs.bits <<= 1;
+        }
+        let mut q = Self::new();
+        for i in 0..=qlen {
+            if *self >= rhs {
+                *self -= &rhs;
+                q.bits.set(0);
+            }
+            if i < qlen {
+                q.bits <<= 1;
+            }
+            rhs.bits >>= 1;
+        }
+        q
+    }
+    /// return (quotient, remainder)
+    pub fn div_rem(&self, rhs: &Self) -> (Self, Self) {
+        let mut r = self.clone();
+        let q = r.div_rem_self(rhs);
+        (q, r)
+    }
+}
+
+impl DivAssign<&Self> for BigUint {
+    fn div_assign(&mut self, rhs: &Self) {
+        *self = self.div_rem_self(rhs);
+    }
+}
+
+impl Div<Self> for &BigUint {
+    type Output = BigUint;
+    fn div(self, rhs: Self) -> Self::Output {
+        self.clone().div_rem_self(rhs)
+    }
+}
+
+impl Div<&Self> for BigUint {
+    type Output = BigUint;
+    fn div(mut self, rhs: &Self) -> Self::Output {
+        self.div_rem_self(rhs)
+    }
+}
+
+impl RemAssign<&Self> for BigUint {
+    fn rem_assign(&mut self, rhs: &Self) {
+        self.div_rem_self(rhs);
+    }
+}
+
+impl Rem<Self> for &BigUint {
+    type Output = BigUint;
+    fn rem(self, rhs: Self) -> Self::Output {
+        let mut r = self.clone();
+        r.div_rem_self(rhs);
+        r
+    }
+}
+
+impl Rem<&Self> for BigUint {
+    type Output = BigUint;
+    fn rem(mut self, rhs: &Self) -> Self::Output {
+        self.div_rem_self(rhs);
+        self
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
+
+    #[test]
+    fn ord_and_partial_ord() {
+        let a = BigUint::from(1_u32);
+        let b = BigUint::from(3_u32);
+        let c = BigUint::from(UintBits::from(vec![1, 1]));
+        assert_eq!(a > b, false);
+        assert_eq!(a >= b, false);
+        assert_eq!(a < b, true);
+        assert_eq!(a <= b, true);
+        assert_eq!(a == b, false);
+        assert_eq!(a == a, true);
+        assert_eq!(b == b, true);
+        assert_eq!(c == c, true);
+        assert_eq!(a > c, false);
+        assert_eq!(a >= c, false);
+        assert_eq!(a < c, true);
+        assert_eq!(a <= c, true);
+    }
 
     #[test]
     fn add_assign() {
@@ -198,5 +326,53 @@ mod test {
             &b * &large,
             BigUint::from(UintBits::from(vec![3 | (1_u64 << 63), 4]))
         );
+    }
+
+    #[test]
+    fn div_rem() {
+        let a = BigUint::from(7_u32);
+        let b = BigUint::from(3_u32);
+        let large = BigUint::from(UintBits::from(vec![1, 1]));
+        assert_eq!(a.div_rem(&b), (BigUint::from(2_u32), BigUint::from(1_u32)));
+        assert_eq!(
+            large.div_rem(&b),
+            (BigUint::from(6148914691236517205_u64), BigUint::from(2_u32))
+        );
+    }
+
+    #[test]
+    fn div_assign() {
+        let mut a = BigUint::from(17_u32);
+        let b = BigUint::from(4_u32);
+        let c = BigUint::from(3_u32);
+        a /= &b;
+        a /= &c;
+        assert_eq!(a, BigUint::from(1_u32));
+    }
+
+    #[test]
+    fn div() {
+        let a = BigUint::from(17_u32);
+        let b = BigUint::from(4_u32);
+        let c = BigUint::from(3_u32);
+        assert_eq!(&a / &b / &c, BigUint::from(1_u32));
+    }
+
+    #[test]
+    fn rem_assign() {
+        let mut a = BigUint::from(17_u32);
+        let b = BigUint::from(6_u32);
+        let c = BigUint::from(3_u32);
+        a %= &b;
+        a %= &c;
+        assert_eq!(a, BigUint::from(2_u32));
+    }
+
+    #[test]
+    fn rem() {
+        let a = BigUint::from(17_u32);
+        let b = BigUint::from(6_u32);
+        let c = BigUint::from(3_u32);
+        assert_eq!(&a % &b % &c, BigUint::from(2_u32));
     }
 }

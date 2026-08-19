@@ -1,5 +1,5 @@
 use std::convert::From;
-use std::iter::Iterator;
+use std::iter::{DoubleEndedIterator, Iterator};
 use std::ops::{
     BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Not, Shl, ShlAssign, Shr,
     ShrAssign,
@@ -68,6 +68,25 @@ impl<'a> Iterator for BitIter<'a> {
     }
 }
 
+impl<'a> DoubleEndedIterator for BitIter<'a> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        if self.i == 0 || self.bits.is_none() {
+            self.i = 64;
+            self.bits = self.viter.next_back();
+            if let Some(bits) = self.bits {
+                self.i -= 1;
+                Some(((bits >> self.i) & 1) as u8)
+            } else {
+                None
+            }
+        } else {
+            let bits = self.bits.unwrap();
+            self.i -= 1;
+            Some(((bits >> self.i) & 1) as u8)
+        }
+    }
+}
+
 impl<'a> UintBits {
     pub fn iter(&'a self) -> BitIter<'a> {
         BitIter::new(&self.0)
@@ -85,12 +104,35 @@ impl UintBits {
         self.0
             .truncate((len >> 6) + ((len & ((1 << 6) - 1) != 0) as usize))
     }
+    /// return total allocated bit count not actuall bit count
     pub fn len(&self) -> usize {
         self.0.len() << 6
     }
+    /// return total bit count
+    pub fn bit_len(&self) -> usize {
+        self.0.iter().rfold(0, |mut len, bits| {
+            if *bits == 0 {
+                return len;
+            }
+            if len == 0 {
+                let mut bits = bits.clone();
+                let mut sub_len = 0_usize;
+                for l in 1..=64 {
+                    if bits & 1 == 1 {
+                        sub_len = l;
+                    }
+                    bits >>= 1;
+                }
+                len += sub_len;
+            } else {
+                len += 64;
+            }
+            len
+        })
+    }
     pub fn set(&mut self, index: usize) {
-        let idx = index / 64;
-        let bit = index % 64;
+        let idx = index >> 6;
+        let bit = index & ((1 << 6) - 1);
         if self.0.len() <= idx {
             self.0.extend(vec![0; idx - self.0.len() + 1].into_iter());
         }
@@ -98,8 +140,8 @@ impl UintBits {
         self.shrink();
     }
     pub fn reset(&mut self, index: usize) {
-        let idx = index / 64;
-        let bit = index % 64;
+        let idx = index >> 6;
+        let bit = index & ((1 << 6) - 1);
         if self.0.len() <= idx {
             self.0.extend(vec![0; idx - self.0.len() + 1].into_iter());
         }
@@ -110,20 +152,30 @@ impl UintBits {
         self.0[index] = value;
     }
     /// align most significant side of inner data with bit 0
-    pub fn align_most(&mut self, other: &Self) {
+    /// reutrn aligned length
+    /// NOTICE: the align unit is 64-bit not 1-bit
+    pub fn align_most(&mut self, other: &Self) -> usize {
         if self.0.len() < other.0.len() {
-            self.0
-                .extend(vec![0; other.0.len() - self.0.len()].into_iter());
+            let align = other.0.len() - self.0.len();
+            self.0.extend(vec![0; align].into_iter());
+            align
+        } else {
+            0
         }
     }
     /// align least significant side of inner data with bit 0
-    pub fn align_least(&mut self, other: &Self) {
-        self.0.reverse();
+    /// reutrn aligned length
+    /// NOTICE: the align unit is 64-bit not 1-bit
+    pub fn align_least(&mut self, other: &Self) -> usize {
         if self.0.len() < other.0.len() {
-            self.0
-                .extend(vec![0; other.0.len() - self.0.len()].into_iter());
+            let align = other.0.len() - self.0.len();
+            self.0.reverse();
+            self.0.extend(vec![0; align].into_iter());
+            self.0.reverse();
+            align
+        } else {
+            0
         }
-        self.0.reverse();
     }
     pub fn fold_bits<B>(&self, init: B, f: impl FnMut(B, &u64) -> B) -> B {
         self.0.iter().fold(init, f)
@@ -215,8 +267,8 @@ macro_rules! impl_shl_assign {
                     return;
                 }
 
-                let step = (rhs / 64) as usize;
-                let shift = rhs % 64;
+                let step = (rhs >> 6) as usize;
+                let shift = rhs & ((1 << 6) - 1);
 
                 // handle step
                 self.0.reverse();
@@ -301,8 +353,8 @@ macro_rules! impl_shr_assign {
                     return;
                 }
 
-                let step = (rhs / 64) as usize;
-                let shift = rhs % 64;
+                let step = (rhs >> 6) as usize;
+                let shift = rhs & ((1 << 6) - 1);
 
                 // handle step
                 if self.0.len() <= step {
@@ -399,12 +451,29 @@ mod test {
     }
 
     #[test]
-    fn align() {
+    fn align_most() {
         let mut lhs = UintBits::new();
         let rhs = UintBits::from(vec![0, 0]);
-        lhs.align_most(&rhs);
+        let len = lhs.align_most(&rhs);
         assert_eq!(lhs.0.len(), 2);
         assert_eq!(lhs, rhs);
+        assert_eq!(len, 1);
+    }
+
+    #[test]
+    fn align_least() {
+        let mut lhs = UintBits::new();
+        let rhs = UintBits::from(vec![0, 0]);
+        let len = lhs.align_least(&rhs);
+        assert_eq!(lhs.0.len(), 2);
+        assert_eq!(lhs, rhs);
+        assert_eq!(len, 1);
+    }
+
+    #[test]
+    fn bit_len() {
+        let bits = UintBits::from(vec![0923, 1, 0]);
+        assert_eq!(bits.bit_len(), 65);
     }
 
     #[test]
@@ -426,6 +495,16 @@ mod test {
         let mut correct = Vec::new();
         correct.extend(vec![0_u8; 64].into_iter());
         correct.extend(vec![1_u8; 64].into_iter());
+        assert_eq!(bit_arr, correct);
+    }
+
+    #[test]
+    fn double_ended_iter() {
+        let bits = UintBits::from(vec![0, u64::MAX]);
+        let bit_arr = bits.iter().rev().collect::<Vec<u8>>();
+        let mut correct = Vec::new();
+        correct.extend(vec![1_u8; 64].into_iter());
+        correct.extend(vec![0_u8; 64].into_iter());
         assert_eq!(bit_arr, correct);
     }
 
