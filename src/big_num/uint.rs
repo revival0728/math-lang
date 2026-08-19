@@ -1,5 +1,3 @@
-use crate::builtin::mtype;
-
 use super::ubits::UintBits;
 use std::cmp::Ord;
 use std::convert::From;
