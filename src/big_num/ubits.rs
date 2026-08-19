@@ -271,12 +271,13 @@ macro_rules! impl_shl_assign {
                 let shift = rhs & ((1 << 6) - 1);
 
                 // handle step
-                self.0.reverse();
-                self.0.extend(vec![0; step].into_iter());
-                self.0.reverse();
+                if step > 0 {
+                    self.0.reverse();
+                    self.0.extend(vec![0; step].into_iter());
+                    self.0.reverse();
+                }
 
                 // handle shift
-                assert!(shift < 64);
                 if shift == 0 {
                     return;
                 }
@@ -360,14 +361,13 @@ macro_rules! impl_shr_assign {
                 if self.0.len() <= step {
                     self.0 = Vec::new();
                     return;
-                } else {
+                } else if step > 0 {
                     self.0.reverse();
                     self.0.truncate(self.0.len() - step);
                     self.0.reverse();
                 }
 
                 // handle shift
-                assert!(shift < 64);
                 if shift == 0 {
                     return;
                 }
