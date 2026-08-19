@@ -226,15 +226,6 @@ macro_rules! impl_bit_oper {
                 self
             }
         }
-        impl $trait<UintBits> for &UintBits {
-            type Output = UintBits;
-            fn $fname(self, rhs: UintBits) -> Self::Output {
-                let mut ret = self.clone();
-                ret $oper_assign &rhs;
-                ret.shrink();
-                ret
-            }
-        }
     };
 }
 impl_bit_oper!(BitAnd, bitand, &=);
