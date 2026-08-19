@@ -1,2 +1,3 @@
+pub mod decimal;
 mod ubits;
-mod uint;
+pub mod uint;
