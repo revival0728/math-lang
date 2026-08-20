@@ -5,7 +5,7 @@ use std::ops::{
     ShrAssign,
 };
 
-/// Structure provides bit operations for Big_Uint
+/// Structure provides bit operations for BigUint
 ///
 /// UintBits stores data in little endian.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -148,8 +148,8 @@ impl UintBits {
         self.0[idx] &= !(1_u64 << bit);
         self.shrink();
     }
-    pub fn set_bits(&mut self, index: usize, value: u64) {
-        self.0[index] = value;
+    pub fn set_bits(&mut self, data_index: usize, value: u64) {
+        self.0[data_index] = value;
     }
     /// align most significant side of inner data with bit 0
     /// reutrn aligned length

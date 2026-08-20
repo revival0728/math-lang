@@ -1,13 +1,17 @@
 use super::ubits::UintBits;
 
-#[derive(Debug, Clone)]
+/// Structure stores decimal part in big endian bits
+///
+/// `base` stands for total actual bits in this structure,
+/// preventing leading zero confusion
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Decimal {
     bits: UintBits,
-    precision: u8,
+    base: u32,
 }
 
 impl Decimal {
-    pub fn new(bits: UintBits, precision: u8) -> Self {
-        Self { bits, precision }
+    pub fn new(bits: UintBits, base: u32) -> Self {
+        Self { bits, base }
     }
 }
