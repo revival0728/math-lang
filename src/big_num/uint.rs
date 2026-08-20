@@ -269,9 +269,10 @@ impl Display for BigUint {
         }
         buf <<= 3;
         let mut dlen = 0_usize;
-        for len in 3..bit_len {
+        for l in 3..bit_len {
             let mut unit = 0_usize;
-            while unit <= len + dlen {
+            let len = l + dlen;
+            while unit <= len {
                 let mut tmp = buf.get(unit + bit_len)
                     | (buf.get(unit + bit_len + 1) << 1)
                     | (buf.get(unit + bit_len + 2) << 2)
@@ -290,12 +291,14 @@ impl Display for BigUint {
                 }
                 unit += 4;
             }
-            const MASK_2: usize = (1 << 2) - 1;
-            if buf.get(bit_len + (len & MASK_2) + 1) == 1 {
+            const MASK_2: usize = !((1 << 2) - 1);
+            // check if most bit of current leading 10-base 4 bits is 1
+            if buf.get(bit_len + (len & MASK_2) + 4 * ((len & !MASK_2) != 0) as usize) == 1 {
                 dlen += 1;
             }
             buf <<= 1;
         }
+        eprintln!("LEN: {}", bit_len + dlen);
         buf >>= bit_len;
         let bytes = buf.to_le_bytes();
         const MASK_4: u8 = (1 << 4) - 1;
