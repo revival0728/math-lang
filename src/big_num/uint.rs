@@ -279,9 +279,6 @@ impl Display for BigUint {
                 if tmp >= 5 {
                     tmp += 3;
                 }
-                if (tmp >> 3) & 1 == 1 {
-                    dlen += 1;
-                }
                 for i in 0..4 {
                     let index = unit + bit_len + i;
                     if tmp & 1 == 1 {
@@ -293,14 +290,18 @@ impl Display for BigUint {
                 }
                 unit += 4;
             }
+            const MASK_2: usize = (1 << 2) - 1;
+            if buf.get(bit_len + (len & MASK_2) + 1) == 1 {
+                dlen += 1;
+            }
             buf <<= 1;
         }
         buf >>= bit_len;
         let bytes = buf.to_le_bytes();
-        const MASK: u8 = (1 << 4) - 1;
+        const MASK_4: u8 = (1 << 4) - 1;
         let res: String = bytes.into_iter().rfold(String::new(), |mut res, bytes| {
             let f = bytes >> 4;
-            let s = bytes & MASK;
+            let s = bytes & MASK_4;
             if f != 0 || !res.is_empty() {
                 res.extend(f.to_string().chars());
             }
