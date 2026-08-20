@@ -1,3 +1,4 @@
+use super::decimal::Decimal;
 use super::ubits::UintBits;
 use std::cmp::Ord;
 use std::convert::From;
@@ -16,6 +17,12 @@ impl BigUint {
         Self {
             bits: UintBits::new(),
         }
+    }
+}
+
+impl BigUint {
+    pub fn into_bits(self) -> UintBits {
+        self.bits
     }
 }
 
@@ -229,6 +236,27 @@ impl Rem<&Self> for BigUint {
     }
 }
 
+impl BigUint {
+    /// calcuates decimal part of division, precision provides as 10-base
+    pub fn div_decimal(&self, rhs: &Self, precision: u8) -> Decimal {
+        const TLOG2: u32 = 10_u32.ilog2();
+        const MAGIC: u32 = 32192; // decimal part of log2(10)
+        const SHIFT: u8 = 16;
+        let mut lhs = self.clone();
+        let lbl = lhs.bits.bit_len();
+        let rbl = rhs.bits.bit_len();
+        if lbl > rbl {
+            return Decimal::new(UintBits::new(), 0);
+        }
+        let p = precision as u32;
+        let p2b = p * TLOG2 + ((p * MAGIC) >> SHIFT);
+        let base = (rbl - lbl) as u32 + p2b;
+        lhs.bits <<= base;
+        let q = &lhs / &rhs;
+        Decimal::new(q.bits, base)
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -370,5 +398,20 @@ mod test {
         let b = BigUint::from(6_u32);
         let c = BigUint::from(3_u32);
         assert_eq!(&a % &b % &c, BigUint::from(2_u32));
+    }
+
+    #[test]
+    fn div_decimal() {
+        let a = BigUint::from(1_u32);
+        let b = BigUint::from(2_u32);
+        let c = BigUint::from(7_u32);
+        assert_eq!(
+            a.div_decimal(&b, 2),
+            Decimal::new(UintBits::from(vec![64]), 7)
+        );
+        assert_eq!(
+            a.div_decimal(&c, 7),
+            Decimal::new(UintBits::from(vec![9586980]), 26)
+        );
     }
 }
