@@ -2,6 +2,7 @@ use super::decimal::Decimal;
 use super::ubits::UintBits;
 use std::cmp::Ord;
 use std::convert::From;
+use std::fmt::Display;
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Rem, RemAssign, Sub, SubAssign};
 
 // TODO: div_rem, Div, Rem, div_num((Self, (Self, usize)) -> (integer, (decimal, -2^N)))
@@ -257,6 +258,61 @@ impl BigUint {
     }
 }
 
+impl Display for BigUint {
+    /// the double dabble algorithm
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut buf = self.bits.clone();
+        let bit_len = buf.bit_len();
+        if bit_len <= 3 {
+            let bytes = self.bits.to_le_bytes();
+            return write!(f, "{}", if bytes.is_empty() { 0 } else { bytes[0] });
+        }
+        buf <<= 3;
+        let mut dlen = 0_usize;
+        for len in 3..bit_len {
+            let mut unit = 0_usize;
+            while unit <= len + dlen {
+                let mut tmp = buf.get(unit + bit_len)
+                    | (buf.get(unit + bit_len + 1) << 1)
+                    | (buf.get(unit + bit_len + 2) << 2)
+                    | (buf.get(unit + bit_len + 3) << 3);
+                if tmp >= 5 {
+                    tmp += 3;
+                }
+                if (tmp >> 3) & 1 == 1 {
+                    dlen += 1;
+                }
+                for i in 0..4 {
+                    let index = unit + bit_len + i;
+                    if tmp & 1 == 1 {
+                        buf.set(index);
+                    } else {
+                        buf.reset(index);
+                    }
+                    tmp >>= 1;
+                }
+                unit += 4;
+            }
+            buf <<= 1;
+        }
+        buf >>= bit_len;
+        let bytes = buf.to_le_bytes();
+        const MASK: u8 = (1 << 4) - 1;
+        let res: String = bytes.into_iter().rfold(String::new(), |mut res, bytes| {
+            let f = bytes >> 4;
+            let s = bytes & MASK;
+            if f != 0 || !res.is_empty() {
+                res.extend(f.to_string().chars());
+            }
+            if s != 0 || !res.is_empty() {
+                res.extend(s.to_string().chars());
+            }
+            res
+        });
+        write!(f, "{}", res)
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -413,5 +469,19 @@ mod test {
             a.div_decimal(&c, 7),
             Decimal::new(UintBits::from(vec![9586980]), 26)
         );
+    }
+
+    #[test]
+    fn display_to_string() {
+        let a = BigUint::from(0_u32);
+        let b = BigUint::from(1_u32);
+        let c = BigUint::from(123456_u32);
+        let d = BigUint::from(102304055008_u64);
+        let large = BigUint::from(UintBits::from(vec![1, 1]));
+        assert_eq!(a.to_string(), "0");
+        assert_eq!(b.to_string(), "1");
+        assert_eq!(c.to_string(), "123456");
+        assert_eq!(d.to_string(), "102304055008");
+        assert_eq!(large.to_string(), "18446744073709551617");
     }
 }
