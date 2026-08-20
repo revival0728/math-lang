@@ -1,4 +1,5 @@
 use std::convert::From;
+use std::fmt::{Debug, Write};
 use std::iter::{DoubleEndedIterator, Iterator};
 use std::ops::{
     BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Not, Shl, ShlAssign, Shr,
@@ -8,7 +9,7 @@ use std::ops::{
 /// Structure provides bit operations for BigUint
 ///
 /// UintBits stores data in little endian.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct UintBits(Vec<u64>);
 
 #[derive(Debug, Clone)]
@@ -16,6 +17,34 @@ pub struct BitIter<'a> {
     viter: std::slice::Iter<'a, u64>,
     bits: Option<&'a u64>,
     i: u8,
+}
+
+impl Debug for UintBits {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let res: String = self
+            .0
+            .iter()
+            .rev()
+            .enumerate()
+            .map(|(idx, bits)| {
+                if idx == 0 {
+                    format!("{:b}", bits)
+                } else {
+                    format!("{:064b}", bits)
+                }
+            })
+            .collect();
+
+        use std::fmt::Alignment;
+        let width = f.width().unwrap_or(0);
+        let align = f.align();
+        match align {
+            Some(Alignment::Left) => write!(f, "{:<w$}", res, w = width),
+            Some(Alignment::Right) => write!(f, "{:>w$}", res, w = width),
+            Some(Alignment::Center) => write!(f, "{:^w$}", res, w = width),
+            None => write!(f, "{}", res),
+        }
+    }
 }
 
 impl UintBits {
@@ -33,6 +62,21 @@ impl Default for UintBits {
 impl From<Vec<u64>> for UintBits {
     fn from(value: Vec<u64>) -> Self {
         Self(value)
+    }
+}
+
+impl UintBits {
+    pub fn to_le_bytes(&self) -> Vec<u8> {
+        const MASK: u64 = (1 << 9) - 1;
+        let mut ret = Vec::new();
+        for bits in self.0.iter() {
+            let mut bits = bits.clone();
+            for _ in 0..8 {
+                ret.push((bits & MASK) as u8);
+                bits >>= 8;
+            }
+        }
+        ret
     }
 }
 
@@ -129,6 +173,15 @@ impl UintBits {
             }
             len
         })
+    }
+    pub fn get(&self, index: usize) -> u8 {
+        let idx = index >> 6;
+        let bit = index & ((1 << 6) - 1);
+        if idx >= self.0.len() {
+            0
+        } else {
+            ((self.0[idx] >> bit) & 1) as u8
+        }
     }
     pub fn set(&mut self, index: usize) {
         let idx = index >> 6;
@@ -427,6 +480,35 @@ impl_shr!(&usize);
 #[cfg(test)]
 mod test {
     use super::*;
+
+    #[test]
+    fn debug() {
+        let bits = UintBits::from(vec![1, 1]);
+        assert_eq!(
+            format!("{:?}", bits),
+            "10000000000000000000000000000000000000000000000000000000000000001"
+        );
+    }
+
+    #[test]
+    fn to_le_bytes() {
+        let bits = UintBits::from(vec![0, u64::MAX, 0923]);
+        let bytes = bits.to_le_bytes();
+        let correct: Vec<u8> = vec![
+            0, 0, 0, 0, 0, 0, 0, 0, 255, 255, 255, 255, 255, 255, 255, 255, 155, 3, 0, 0, 0, 0, 0,
+            0,
+        ];
+        assert_eq!(bytes, correct);
+    }
+
+    #[test]
+    fn get() {
+        let bits = UintBits::from(vec![0, u64::MAX]);
+        assert_eq!(bits.get(0), 0);
+        assert_eq!(bits.get(23), 0);
+        assert_eq!(bits.get(64), 1);
+        assert_eq!(bits.get(120), 1);
+    }
 
     #[test]
     fn set_and_reset() {
