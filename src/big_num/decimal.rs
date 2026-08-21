@@ -1,4 +1,6 @@
 use super::ubits::UintBits;
+use super::uint::BigUint;
+use std::fmt::Display;
 
 /// Structure stores decimal part in big endian bits
 ///
@@ -7,11 +9,50 @@ use super::ubits::UintBits;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Decimal {
     bits: UintBits,
-    base: u32,
+    base: u32, // maximum of base is 848 (from 10-base precision 255)
 }
 
 impl Decimal {
     pub fn new(bits: UintBits, base: u32) -> Self {
         Self { bits, base }
+    }
+}
+
+impl Display for Decimal {
+    // FIXME: I DON'T KNOW WHY THIS IS PREFECTLY WORKING
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut deci = BigUint::from(self.bits.clone());
+        let base2 = {
+            let mut bits = UintBits::new();
+            bits.set(self.base as usize);
+            BigUint::from(bits)
+        };
+        let mut exp = (self.base >> 2) + 1;
+        let mut base10 = BigUint::from(10_u32);
+        while exp > 0 {
+            if exp & 1 == 1 {
+                deci *= &base10;
+            }
+            base10 *= &base10.clone();
+            exp >>= 1;
+        }
+        deci /= &base2;
+        write!(f, "{}", deci.to_string())
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn display_to_string() {
+        let one = BigUint::from(1_u32);
+        let a = BigUint::from(2_u32);
+        let b = BigUint::from(3_u32);
+        let c = BigUint::from(7_u32);
+        assert_eq!(one.div_decimal(&a, 6).to_string(), "500000");
+        assert_eq!(one.div_decimal(&b, 6).to_string(), "333333");
+        assert_eq!(one.div_decimal(&c, 6).to_string(), "142857");
     }
 }
