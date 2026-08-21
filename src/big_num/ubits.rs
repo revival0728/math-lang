@@ -78,6 +78,19 @@ impl UintBits {
         }
         ret
     }
+    pub fn from_le_bytes(bytes: &[u8]) -> Self {
+        let mut bits = Self::new();
+        for b in (0..bytes.len()).step_by(8) {
+            let mut b64 = 0_u64;
+            for i in 0..8 {
+                let idx = i + b;
+                let byte = if idx >= bytes.len() { 0 } else { bytes[idx] } as u64;
+                b64 |= byte << (i << 3);
+            }
+            bits.set_bits(b >> 3, b64);
+        }
+        bits
+    }
 }
 
 impl<'a> BitIter<'a> {
@@ -139,7 +152,7 @@ impl<'a> UintBits {
 
 impl UintBits {
     /// pops out redundant leading zeros
-    fn shrink(&mut self) {
+    pub fn shrink(&mut self) {
         while self.0.len() > 1 && *self.0.last().unwrap() == 0 {
             self.0.pop();
         }
@@ -202,6 +215,10 @@ impl UintBits {
         self.shrink();
     }
     pub fn set_bits(&mut self, data_index: usize, value: u64) {
+        if self.0.len() <= data_index {
+            self.0
+                .extend(vec![0; data_index - self.0.len() + 1].into_iter());
+        }
         self.0[data_index] = value;
     }
     /// align most significant side of inner data with bit 0
@@ -499,6 +516,20 @@ mod test {
             0,
         ];
         assert_eq!(bytes, correct);
+    }
+
+    #[test]
+    fn from_le_bytes() {
+        let b1 = [u8::MAX; 7];
+        let b2 = [u8::MAX; 9];
+        assert_eq!(
+            UintBits::from_le_bytes(&b1),
+            UintBits::from(vec![(1 << 56) - 1])
+        );
+        assert_eq!(
+            UintBits::from_le_bytes(&b2),
+            UintBits::from(vec![u64::MAX, (1 << 8) - 1])
+        );
     }
 
     #[test]

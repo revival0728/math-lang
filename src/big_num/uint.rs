@@ -298,7 +298,6 @@ impl Display for BigUint {
             }
             buf <<= 1;
         }
-        eprintln!("LEN: {}", bit_len + dlen);
         buf >>= bit_len;
         let bytes = buf.to_le_bytes();
         const MASK_4: u8 = (1 << 4) - 1;
@@ -314,6 +313,58 @@ impl Display for BigUint {
             res
         });
         write!(f, "{}", res)
+    }
+}
+
+impl From<&str> for BigUint {
+    fn from(value: &str) -> Self {
+        const ASCII_ZERO: u8 = '0' as u8;
+        let mut bytes: Vec<u8> = value
+            .as_bytes()
+            .windows(2)
+            .map(|bs| ((bs[0] - ASCII_ZERO) << 4) | (bs[1] - ASCII_ZERO))
+            .step_by(2)
+            .rev()
+            .collect();
+        if value.len() & 1 == 1 {
+            bytes.insert(0, value.as_bytes().last().unwrap() - '0' as u8);
+        }
+        eprintln!("BYTES: {:?}", bytes);
+        let mut buf = UintBits::from_le_bytes(&bytes);
+        let bit_len = buf.bit_len();
+        buf <<= bit_len;
+        for _ in 0..bit_len {
+            buf >>= 1;
+            let mut unit = 0_usize;
+            while unit <= bit_len {
+                let mut tmp = buf.get(unit + bit_len)
+                    | (buf.get(unit + bit_len + 1) << 1)
+                    | (buf.get(unit + bit_len + 2) << 2)
+                    | (buf.get(unit + bit_len + 3) << 3);
+                if tmp >= 8 {
+                    tmp -= 3;
+                }
+                for i in 0..4 {
+                    let index = unit + bit_len + i;
+                    if tmp & 1 == 1 {
+                        buf.set(index);
+                    } else {
+                        buf.reset(index);
+                    }
+                    tmp >>= 1;
+                }
+                unit += 4;
+            }
+        }
+        buf.shrink();
+        eprintln!("BUF: {:?}", buf);
+        BigUint::from(buf)
+    }
+}
+
+impl From<String> for BigUint {
+    fn from(value: String) -> Self {
+        Self::from(value.as_str())
     }
 }
 
@@ -487,5 +538,19 @@ mod test {
         assert_eq!(c.to_string(), "123456");
         assert_eq!(d.to_string(), "102304055008");
         assert_eq!(large.to_string(), "18446744073709551617");
+    }
+
+    #[test]
+    fn from_and_to_string() {
+        let a = "0";
+        let b = "1";
+        let c = "123456";
+        let d = "102304055008";
+        let large = "18446744073709551617";
+        assert_eq!(BigUint::from(a).to_string(), a);
+        assert_eq!(BigUint::from(b).to_string(), b);
+        assert_eq!(BigUint::from(c).to_string(), c);
+        assert_eq!(BigUint::from(d).to_string(), d);
+        assert_eq!(BigUint::from(large).to_string(), large);
     }
 }
