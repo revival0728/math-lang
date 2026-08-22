@@ -1,6 +1,7 @@
 #![allow(unused)]
 
 use super::uint::BigUint;
+use std::cmp::{Ord, PartialOrd};
 use std::convert::From;
 use std::fmt::Display;
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign};
@@ -178,6 +179,36 @@ impl PartialEq for BigNum {
 }
 
 impl Eq for BigNum {}
+
+impl Ord for BigNum {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        use std::cmp::Ordering;
+        let mut s = self.clone();
+        let mut o = other.clone();
+        Self::common_both(&mut s, &mut o);
+        match s.sgn.cmp(&o.sgn) {
+            Ordering::Less => Ordering::Greater,
+            Ordering::Greater => Ordering::Less,
+            Ordering::Equal => {
+                if s.sgn == 0 {
+                    s.num.cmp(&o.num)
+                } else {
+                    match s.num.cmp(&o.num) {
+                        Ordering::Less => Ordering::Greater,
+                        Ordering::Greater => Ordering::Less,
+                        Ordering::Equal => Ordering::Equal,
+                    }
+                }
+            }
+        }
+    }
+}
+
+impl PartialOrd for BigNum {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
 
 impl BigNum {
     /// PartialEq without reduction first
@@ -361,6 +392,31 @@ mod test {
         };
         assert_eq!(a == b, true);
         assert_eq!(a.eq_raw(&b), false);
+    }
+
+    #[test]
+    fn cmp() {
+        let a = BigNum::from(1_u32);
+        let b = BigNum::from(2_u32);
+        let c = BigNum::from(-2_i32);
+        let d = BigNum {
+            sgn: 0,
+            num: BigUint::from(4_u32),
+            den: BigUint::from(2_u32),
+            irr: false,
+        };
+        assert_eq!(a > b, false);
+        assert_eq!(a >= b, false);
+        assert_eq!(a < b, true);
+        assert_eq!(a <= b, true);
+        assert_eq!(a > c, true);
+        assert_eq!(a >= c, true);
+        assert_eq!(a < c, false);
+        assert_eq!(a <= c, false);
+        assert_eq!(a > d, false);
+        assert_eq!(a >= d, false);
+        assert_eq!(a < d, true);
+        assert_eq!(a <= d, true);
     }
 
     #[test]
