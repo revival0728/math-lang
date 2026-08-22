@@ -22,6 +22,12 @@ impl BigUint {
 }
 
 impl BigUint {
+    pub fn is_zero(&self) -> bool {
+        self.bits.all_zero()
+    }
+    pub fn bit_count(&self) -> usize {
+        self.bits.bit_len()
+    }
     pub fn into_bits(self) -> UintBits {
         self.bits
     }
