@@ -10,24 +10,27 @@ use std::fmt::Display;
 pub struct Decimal {
     bits: UintBits,
     base: u32, // maximum of base is 848 (from 10-base precision 255)
+    prec: u8,
 }
 
 impl Decimal {
-    pub fn new(bits: UintBits, base: u32) -> Self {
-        Self { bits, base }
+    pub fn new(bits: UintBits, base: u32, prec: u8) -> Self {
+        Self { bits, base, prec }
     }
 }
 
 impl Display for Decimal {
     // FIXME: I DON'T KNOW WHY THIS IS PREFECTLY WORKING
+    // TODO: Fix this function, broken when precision is not 6
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        const TLOG2: f32 = 0.30103;
         let mut deci = BigUint::from(self.bits.clone());
         let base2 = {
             let mut bits = UintBits::new();
             bits.set(self.base as usize);
             BigUint::from(bits)
         };
-        let mut exp = (self.base >> 2) + 1;
+        let mut exp = (self.base as f32 * TLOG2).trunc() as u32;
         let mut base10 = BigUint::from(10_u32);
         while exp > 0 {
             if exp & 1 == 1 {
@@ -37,7 +40,9 @@ impl Display for Decimal {
             exp >>= 1;
         }
         deci /= &base2;
-        write!(f, "{}", deci.to_string())
+        let mut res = deci.to_string();
+        res.truncate(self.prec as usize);
+        write!(f, "{}", res)
     }
 }
 
@@ -52,7 +57,11 @@ mod test {
         let b = BigUint::from(3_u32);
         let c = BigUint::from(7_u32);
         assert_eq!(one.div_decimal(&a, 6).to_string(), "500000");
+        assert_eq!(one.div_decimal(&a, 15).to_string(), "500000000000000");
         assert_eq!(one.div_decimal(&b, 6).to_string(), "333333");
+        assert_eq!(one.div_decimal(&b, 15).to_string(), "333333333333333");
         assert_eq!(one.div_decimal(&c, 6).to_string(), "142857");
+        assert_eq!(one.div_decimal(&c, 15).to_string(), "142857142857142");
+        assert_eq!(one.div_decimal(&c, 255).to_string().len(), 255);
     }
 }

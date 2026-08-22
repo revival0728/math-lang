@@ -163,7 +163,6 @@ impl Mul<&Self> for BigUint {
 }
 
 impl BigUint {
-    /// return quotient while self is remainder
     pub fn div_rem_self(&mut self, rhs: &Self) -> Self {
         let sbl = self.bits.bit_len();
         let rbl = rhs.bits.bit_len();
@@ -247,14 +246,14 @@ impl BigUint {
         let lbl = lhs.bits.bit_len();
         let rbl = rhs.bits.bit_len();
         if lbl > rbl {
-            return Decimal::new(UintBits::new(), 0);
+            return Decimal::new(UintBits::new(), 0, 0);
         }
         let p = precision as u32;
         let p2b = p * TLOG2 + ((p * MAGIC) >> SHIFT);
         let base = (rbl - lbl) as u32 + p2b;
         lhs.bits <<= base;
         let q = &lhs / &rhs;
-        Decimal::new(q.bits, base)
+        Decimal::new(q.bits, base, precision)
     }
 }
 
@@ -319,19 +318,18 @@ impl Display for BigUint {
 impl From<&str> for BigUint {
     fn from(value: &str) -> Self {
         const ASCII_ZERO: u8 = '0' as u8;
-        let mut bytes: Vec<u8> = value
-            .as_bytes()
-            .windows(2)
-            .map(|bs| ((bs[0] - ASCII_ZERO) << 4) | (bs[1] - ASCII_ZERO))
-            .step_by(2)
-            .rev()
-            .collect();
-        if value.len() & 1 == 1 {
-            bytes.insert(0, value.as_bytes().last().unwrap() - '0' as u8);
-        }
-        eprintln!("BYTES: {:?}", bytes);
+        let bytes = {
+            let mut bytes = Vec::new();
+            let ascii = value.as_bytes();
+            for b in (0..ascii.len()).rev().step_by(2) {
+                let f = ascii[b] - ASCII_ZERO;
+                let s = if b < 1 { ASCII_ZERO } else { ascii[b - 1] } - ASCII_ZERO;
+                bytes.push((s << 4) | f);
+            }
+            bytes
+        };
+        let bit_len = bytes.len() << 3;
         let mut buf = UintBits::from_le_bytes(&bytes);
-        let bit_len = buf.bit_len();
         buf <<= bit_len;
         for _ in 0..bit_len {
             buf >>= 1;
@@ -357,7 +355,6 @@ impl From<&str> for BigUint {
             }
         }
         buf.shrink();
-        eprintln!("BUF: {:?}", buf);
         BigUint::from(buf)
     }
 }
@@ -480,9 +477,17 @@ mod test {
         let mut a = BigUint::from(17_u32);
         let b = BigUint::from(4_u32);
         let c = BigUint::from(3_u32);
+        let mut lg1 = BigUint::from("378213101214913900000000000000000000");
+        let lg2 = BigUint::from("9223372036854775808");
+        let mut lg3 = BigUint::from("381371410412680000000000000000");
+        let lg4 = BigUint::from("9007199254740992");
         a /= &b;
         a /= &c;
+        lg1 /= &lg2;
+        lg3 /= &lg4;
         assert_eq!(a, BigUint::from(1_u32));
+        assert_eq!(lg1, BigUint::from("41005946599968962"));
+        assert_eq!(lg3, BigUint::from("42340732077392"));
     }
 
     #[test]
@@ -490,7 +495,10 @@ mod test {
         let a = BigUint::from(17_u32);
         let b = BigUint::from(4_u32);
         let c = BigUint::from(3_u32);
+        let lg1 = BigUint::from("378213101214913900000000000000000000");
+        let lg2 = BigUint::from("9223372036854775808");
         assert_eq!(&a / &b / &c, BigUint::from(1_u32));
+        assert_eq!(&lg1 / &lg2, BigUint::from("41005946599968962"))
     }
 
     #[test]
@@ -518,11 +526,11 @@ mod test {
         let c = BigUint::from(7_u32);
         assert_eq!(
             a.div_decimal(&b, 2),
-            Decimal::new(UintBits::from(vec![64]), 7)
+            Decimal::new(UintBits::from(vec![64]), 7, 2)
         );
         assert_eq!(
             a.div_decimal(&c, 7),
-            Decimal::new(UintBits::from(vec![9586980]), 26)
+            Decimal::new(UintBits::from(vec![9586980]), 26, 7)
         );
     }
 
@@ -547,10 +555,14 @@ mod test {
         let c = "123456";
         let d = "102304055008";
         let large = "18446744073709551617";
+        let lg1 = "378213101214913900000000000000000000";
+        let lg2 = "9223372036854775808";
         assert_eq!(BigUint::from(a).to_string(), a);
         assert_eq!(BigUint::from(b).to_string(), b);
         assert_eq!(BigUint::from(c).to_string(), c);
         assert_eq!(BigUint::from(d).to_string(), d);
         assert_eq!(BigUint::from(large).to_string(), large);
+        assert_eq!(BigUint::from(lg1).to_string(), lg1);
+        assert_eq!(BigUint::from(lg2).to_string(), lg2);
     }
 }

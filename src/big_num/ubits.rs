@@ -168,7 +168,7 @@ impl UintBits {
     /// return total bit count
     pub fn bit_len(&self) -> usize {
         self.0.iter().rfold(0, |mut len, bits| {
-            if *bits == 0 {
+            if *bits == 0 && len == 0 {
                 return len;
             }
             if len == 0 {
