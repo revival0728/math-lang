@@ -139,6 +139,11 @@ impl BigNum {
         if self.irr {
             return;
         }
+        if self.den.is_zero() {
+            self.num = BigUint::from(1_u32);
+            self.irr = true;
+            return;
+        }
         let gcd = uint_gcd(&self.num, &self.den);
         self.num /= &gcd;
         self.den /= &gcd;
