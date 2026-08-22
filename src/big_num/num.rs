@@ -1,12 +1,14 @@
 use super::uint::BigUint;
+use std::convert::From;
 use std::fmt::Display;
-use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Sub, SubAssign};
+use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
 const IRR_COND: usize = (u64::BITS * 10) as usize;
 
 // FIXME: impl better eq
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BigNum {
+    sgn: u8, // 0: positive, 1: negative
     num: BigUint,
     den: BigUint,
     irr: bool,
@@ -15,6 +17,7 @@ pub struct BigNum {
 impl BigNum {
     pub fn new() -> Self {
         Self {
+            sgn: 0,
             num: BigUint::new(),
             den: BigUint::from(1_u32),
             irr: true,
@@ -68,11 +71,37 @@ impl BigNum {
     }
 }
 
+impl Neg for &BigNum {
+    type Output = BigNum;
+    fn neg(self) -> Self::Output {
+        let mut ret = self.clone();
+        ret.sgn ^= 1;
+        ret
+    }
+}
+
+impl Neg for BigNum {
+    type Output = BigNum;
+    fn neg(mut self) -> Self::Output {
+        self.sgn ^= 1;
+        self
+    }
+}
+
 impl AddAssign<&Self> for BigNum {
     fn add_assign(&mut self, rhs: &Self) {
         let mut rhs = rhs.clone();
         Self::common_both(self, &mut rhs);
-        self.num += &rhs.num;
+        if self.sgn ^ rhs.sgn == 0 {
+            self.num += &rhs.num;
+        } else {
+            if self.num >= rhs.num {
+                self.num -= &rhs.num;
+            } else {
+                self.sgn ^= 1;
+                self.num = &rhs.num - &self.num;
+            }
+        }
         self.update_irr();
     }
 }
@@ -98,7 +127,16 @@ impl SubAssign<&Self> for BigNum {
     fn sub_assign(&mut self, rhs: &Self) {
         let mut rhs = rhs.clone();
         Self::common_both(self, &mut rhs);
-        self.num -= &rhs.num;
+        if self.sgn ^ rhs.sgn == 1 {
+            self.num += &rhs.num;
+        } else {
+            if self.num >= rhs.num {
+                self.num -= &rhs.num;
+            } else {
+                self.sgn ^= 1;
+                self.num = &rhs.num - &self.num;
+            }
+        }
         self.update_irr();
     }
 }
@@ -122,6 +160,7 @@ impl Sub<&Self> for BigNum {
 
 impl MulAssign<&Self> for BigNum {
     fn mul_assign(&mut self, rhs: &Self) {
+        self.sgn ^= rhs.sgn;
         self.num *= &rhs.num;
         self.den *= &rhs.den;
         self.update_irr();
@@ -147,6 +186,7 @@ impl Mul<&Self> for BigNum {
 
 impl DivAssign<&Self> for BigNum {
     fn div_assign(&mut self, rhs: &Self) {
+        self.sgn ^= rhs.sgn;
         self.num *= &rhs.den;
         self.den *= &rhs.num;
         self.update_irr();
@@ -196,13 +236,43 @@ mod test {
     }
 
     #[test]
+    fn neg() {
+        let a = BigNum {
+            sgn: 0,
+            num: BigUint::from(1_u32),
+            den: BigUint::from(2_u32),
+            irr: true,
+        };
+        assert_eq!(
+            -(&a),
+            BigNum {
+                sgn: 1,
+                num: BigUint::from(1_u32),
+                den: BigUint::from(2_u32),
+                irr: true,
+            }
+        );
+        assert_eq!(
+            -a,
+            BigNum {
+                sgn: 1,
+                num: BigUint::from(1_u32),
+                den: BigUint::from(2_u32),
+                irr: true,
+            }
+        );
+    }
+
+    #[test]
     fn common_reduce() {
         let mut a = BigNum {
+            sgn: 0,
             num: BigUint::from(1_u32),
             den: BigUint::from(2_u32),
             irr: true,
         };
         let mut b = BigNum {
+            sgn: 0,
             num: BigUint::from(1_u32),
             den: BigUint::from(3_u32),
             irr: true,
@@ -211,6 +281,7 @@ mod test {
         assert_eq!(
             a,
             BigNum {
+                sgn: 0,
                 num: BigUint::from(3_u32),
                 den: BigUint::from(6_u32),
                 irr: false,
@@ -219,6 +290,7 @@ mod test {
         assert_eq!(
             b,
             BigNum {
+                sgn: 0,
                 num: BigUint::from(2_u32),
                 den: BigUint::from(6_u32),
                 irr: false,
@@ -229,6 +301,7 @@ mod test {
         assert_eq!(
             a,
             BigNum {
+                sgn: 0,
                 num: BigUint::from(1_u32),
                 den: BigUint::from(2_u32),
                 irr: true,
@@ -237,6 +310,7 @@ mod test {
         assert_eq!(
             b,
             BigNum {
+                sgn: 0,
                 num: BigUint::from(1_u32),
                 den: BigUint::from(3_u32),
                 irr: true,
@@ -247,11 +321,13 @@ mod test {
     #[test]
     fn add_assign() {
         let mut a = BigNum {
+            sgn: 0,
             num: BigUint::from(1_u32),
             den: BigUint::from(2_u32),
             irr: true,
         };
         let b = BigNum {
+            sgn: 0,
             num: BigUint::from(1_u32),
             den: BigUint::from(3_u32),
             irr: true,
@@ -260,6 +336,7 @@ mod test {
         assert_eq!(
             a,
             BigNum {
+                sgn: 0,
                 num: BigUint::from(5_u32),
                 den: BigUint::from(6_u32),
                 irr: false,
@@ -270,23 +347,33 @@ mod test {
     #[test]
     fn add() {
         let a = BigNum {
+            sgn: 0,
             num: BigUint::from(1_u32),
             den: BigUint::from(2_u32),
             irr: true,
         };
         let b = BigNum {
+            sgn: 0,
             num: BigUint::from(1_u32),
             den: BigUint::from(3_u32),
             irr: true,
         };
         let c = BigNum {
+            sgn: 0,
             num: BigUint::from(1_u32),
             den: BigUint::from(6_u32),
+            irr: true,
+        };
+        let d = BigNum {
+            sgn: 1,
+            num: BigUint::from(3_u32),
+            den: BigUint::from(1_u32),
             irr: true,
         };
         assert_eq!(
             &a + &b,
             BigNum {
+                sgn: 0,
                 num: BigUint::from(5_u32),
                 den: BigUint::from(6_u32),
                 irr: false,
@@ -295,7 +382,17 @@ mod test {
         assert_eq!(
             &a + &b + &c,
             BigNum {
+                sgn: 0,
                 num: BigUint::from(6_u32),
+                den: BigUint::from(6_u32),
+                irr: false,
+            }
+        );
+        assert_eq!(
+            &a + &b + &c + &d,
+            BigNum {
+                sgn: 1,
+                num: BigUint::from(12_u32),
                 den: BigUint::from(6_u32),
                 irr: false,
             }
@@ -305,11 +402,13 @@ mod test {
     #[test]
     fn sub_assign() {
         let mut a = BigNum {
+            sgn: 0,
             num: BigUint::from(1_u32),
             den: BigUint::from(2_u32),
             irr: true,
         };
         let b = BigNum {
+            sgn: 0,
             num: BigUint::from(1_u32),
             den: BigUint::from(3_u32),
             irr: true,
@@ -318,6 +417,7 @@ mod test {
         assert_eq!(
             a,
             BigNum {
+                sgn: 0,
                 num: BigUint::from(1_u32),
                 den: BigUint::from(6_u32),
                 irr: false,
@@ -328,23 +428,33 @@ mod test {
     #[test]
     fn sub() {
         let a = BigNum {
+            sgn: 0,
             num: BigUint::from(1_u32),
             den: BigUint::from(2_u32),
             irr: true,
         };
         let b = BigNum {
+            sgn: 0,
             num: BigUint::from(1_u32),
             den: BigUint::from(3_u32),
             irr: true,
         };
         let c = BigNum {
+            sgn: 0,
             num: BigUint::from(1_u32),
             den: BigUint::from(6_u32),
+            irr: true,
+        };
+        let d = BigNum {
+            sgn: 1,
+            num: BigUint::from(3_u32),
+            den: BigUint::from(1_u32),
             irr: true,
         };
         assert_eq!(
             &a - &b,
             BigNum {
+                sgn: 0,
                 num: BigUint::from(1_u32),
                 den: BigUint::from(6_u32),
                 irr: false,
@@ -353,7 +463,26 @@ mod test {
         assert_eq!(
             &a - &b - &c,
             BigNum {
+                sgn: 0,
                 num: BigUint::from(0_u32),
+                den: BigUint::from(6_u32),
+                irr: false,
+            }
+        );
+        assert_eq!(
+            &a - &b - &c - &d,
+            BigNum {
+                sgn: 0,
+                num: BigUint::from(18_u32),
+                den: BigUint::from(6_u32),
+                irr: false,
+            }
+        );
+        assert_eq!(
+            &a - &b - &c - &(-(&d)),
+            BigNum {
+                sgn: 1,
+                num: BigUint::from(18_u32),
                 den: BigUint::from(6_u32),
                 irr: false,
             }
@@ -363,11 +492,13 @@ mod test {
     #[test]
     fn mul_assign() {
         let mut a = BigNum {
+            sgn: 0,
             num: BigUint::from(1_u32),
             den: BigUint::from(2_u32),
             irr: true,
         };
         let b = BigNum {
+            sgn: 0,
             num: BigUint::from(2_u32),
             den: BigUint::from(3_u32),
             irr: true,
@@ -376,6 +507,7 @@ mod test {
         assert_eq!(
             a,
             BigNum {
+                sgn: 0,
                 num: BigUint::from(2_u32),
                 den: BigUint::from(6_u32),
                 irr: false,
@@ -386,23 +518,33 @@ mod test {
     #[test]
     fn mul() {
         let a = BigNum {
+            sgn: 0,
             num: BigUint::from(1_u32),
             den: BigUint::from(2_u32),
             irr: true,
         };
         let b = BigNum {
+            sgn: 0,
             num: BigUint::from(2_u32),
             den: BigUint::from(3_u32),
             irr: true,
         };
         let c = BigNum {
+            sgn: 0,
             num: BigUint::from(1_u32),
             den: BigUint::from(6_u32),
+            irr: true,
+        };
+        let d = BigNum {
+            sgn: 1,
+            num: BigUint::from(3_u32),
+            den: BigUint::from(1_u32),
             irr: true,
         };
         assert_eq!(
             &a * &b,
             BigNum {
+                sgn: 0,
                 num: BigUint::from(2_u32),
                 den: BigUint::from(6_u32),
                 irr: false,
@@ -411,7 +553,17 @@ mod test {
         assert_eq!(
             &a * &b * &c,
             BigNum {
+                sgn: 0,
                 num: BigUint::from(2_u32),
+                den: BigUint::from(36_u32),
+                irr: false,
+            }
+        );
+        assert_eq!(
+            &a * &b * &c * &d,
+            BigNum {
+                sgn: 1,
+                num: BigUint::from(6_u32),
                 den: BigUint::from(36_u32),
                 irr: false,
             }
@@ -421,11 +573,13 @@ mod test {
     #[test]
     fn div_assign() {
         let mut a = BigNum {
+            sgn: 0,
             num: BigUint::from(1_u32),
             den: BigUint::from(2_u32),
             irr: true,
         };
         let b = BigNum {
+            sgn: 0,
             num: BigUint::from(2_u32),
             den: BigUint::from(3_u32),
             irr: true,
@@ -434,6 +588,7 @@ mod test {
         assert_eq!(
             a,
             BigNum {
+                sgn: 0,
                 num: BigUint::from(3_u32),
                 den: BigUint::from(4_u32),
                 irr: false,
@@ -444,33 +599,44 @@ mod test {
     #[test]
     fn div() {
         let a = BigNum {
+            sgn: 0,
             num: BigUint::from(1_u32),
             den: BigUint::from(2_u32),
             irr: true,
         };
         let b = BigNum {
+            sgn: 0,
             num: BigUint::from(2_u32),
             den: BigUint::from(3_u32),
             irr: true,
         };
         let c = BigNum {
+            sgn: 0,
             num: BigUint::from(1_u32),
             den: BigUint::from(6_u32),
+            irr: true,
+        };
+        let d = BigNum {
+            sgn: 1,
+            num: BigUint::from(3_u32),
+            den: BigUint::from(1_u32),
             irr: true,
         };
         assert_eq!(
             &a / &b,
             BigNum {
+                sgn: 0,
                 num: BigUint::from(3_u32),
                 den: BigUint::from(4_u32),
                 irr: false,
             }
         );
         assert_eq!(
-            &a / &b / &c,
+            &a / &b / &c / &d,
             BigNum {
+                sgn: 1,
                 num: BigUint::from(18_u32),
-                den: BigUint::from(4_u32),
+                den: BigUint::from(12_u32),
                 irr: false,
             }
         );
@@ -479,16 +645,19 @@ mod test {
     #[test]
     fn to_float_str() {
         let a = BigNum {
+            sgn: 0,
             num: BigUint::from(1_u32),
             den: BigUint::from(2_u32),
             irr: true,
         };
         let b = BigNum {
+            sgn: 0,
             num: BigUint::from(2_u32),
             den: BigUint::from(3_u32),
             irr: true,
         };
         let c = BigNum {
+            sgn: 0,
             num: BigUint::from(8_u32),
             den: BigUint::from(7_u32),
             irr: true,
