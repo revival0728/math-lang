@@ -2,7 +2,7 @@
 
 use super::uint::BigUint;
 use std::cmp::{Ord, PartialOrd};
-use std::convert::{From, TryFrom};
+use std::convert::{From, TryFrom, TryInto};
 use std::fmt::{Debug, Display};
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
@@ -32,6 +32,15 @@ impl BigNum {
             den: BigUint::from(0_u32),
             irr: true,
         }
+    }
+}
+
+impl BigNum {
+    pub fn is_int(&self) -> bool {
+        (&self.num % &self.den).is_zero()
+    }
+    pub fn is_inf(&self) -> bool {
+        self.den.is_zero()
     }
 }
 
