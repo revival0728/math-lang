@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 use super::uint::BigUint;
 use std::convert::From;
 use std::fmt::Display;
@@ -5,8 +7,7 @@ use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssi
 
 const IRR_COND: usize = (u64::BITS * 10) as usize;
 
-// FIXME: impl better eq
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct BigNum {
     sgn: u8, // 0: positive, 1: negative
     num: BigUint,
@@ -163,6 +164,25 @@ impl BigNum {
         if self.num.bit_count() >= IRR_COND || self.den.bit_count() >= IRR_COND {
             self.reduce();
         }
+    }
+}
+
+impl PartialEq for BigNum {
+    fn eq(&self, other: &Self) -> bool {
+        let mut s = self.clone();
+        let mut o = other.clone();
+        s.reduce();
+        o.reduce();
+        s.sgn == o.sgn && s.num == o.num && s.den == o.den
+    }
+}
+
+impl Eq for BigNum {}
+
+impl BigNum {
+    /// PartialEq without reduction first
+    fn eq_raw(&self, other: &Self) -> bool {
+        self.sgn == other.sgn && self.num == other.num && self.den == other.den
     }
 }
 
@@ -329,6 +349,19 @@ impl BigNum {
 #[cfg(test)]
 mod test {
     use super::*;
+
+    #[test]
+    fn eq_and_eq_raw() {
+        let a = BigNum::from(1_u32);
+        let b = BigNum {
+            sgn: 0,
+            num: BigUint::from(2_u32),
+            den: BigUint::from(2_u32),
+            irr: false,
+        };
+        assert_eq!(a == b, true);
+        assert_eq!(a.eq_raw(&b), false);
+    }
 
     #[test]
     fn inf() {
