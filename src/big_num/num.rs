@@ -301,7 +301,7 @@ impl BigNum {
     /// Update `self.irr` after operation
     fn update_irr(&mut self) {
         self.irr = false;
-        if self.num.bit_count() >= IRR_COND || self.den.bit_count() >= IRR_COND {
+        if self.num.bit_capacity() >= IRR_COND || self.den.bit_capacity() >= IRR_COND {
             self.reduce();
         }
     }

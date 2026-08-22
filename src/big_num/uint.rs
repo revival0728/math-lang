@@ -28,6 +28,9 @@ impl BigUint {
     pub fn bit_count(&self) -> usize {
         self.bits.bit_len()
     }
+    pub fn bit_capacity(&self) -> usize {
+        self.bits.len()
+    }
     pub fn into_bits(self) -> UintBits {
         self.bits
     }
