@@ -18,8 +18,16 @@ impl BigNum {
     pub fn new() -> Self {
         Self {
             sgn: 0,
-            num: BigUint::new(),
+            num: BigUint::from(0_u32),
             den: BigUint::from(1_u32),
+            irr: true,
+        }
+    }
+    pub fn inf() -> Self {
+        Self {
+            sgn: 0,
+            num: BigUint::from(1_u32),
+            den: BigUint::from(0_u32),
             irr: true,
         }
     }
@@ -299,7 +307,11 @@ impl Div<&Self> for BigNum {
 
 impl Display for BigNum {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "({})/({})", self.num, self.den)
+        if self.den.is_zero() {
+            write!(f, "{}{}", if self.sgn == 0 { "+" } else { "-" }, "INF")
+        } else {
+            write!(f, "({})/({})", self.num, self.den)
+        }
     }
 }
 
@@ -317,6 +329,21 @@ impl BigNum {
 #[cfg(test)]
 mod test {
     use super::*;
+
+    #[test]
+    fn inf() {
+        let inf = BigNum::inf();
+        let num = BigNum::from(5_u32);
+        assert_eq!((&inf + &num).to_string(), "+INF");
+        assert_eq!((&inf - &num).to_string(), "+INF");
+        assert_eq!((&inf * &num).to_string(), "+INF");
+        assert_eq!((&inf / &num).to_string(), "+INF");
+        assert_eq!((&num - &inf).to_string(), "-INF");
+        assert_eq!((&(-(&inf)) + &num).to_string(), "-INF");
+        assert_eq!((&(-(&inf)) - &num).to_string(), "-INF");
+        assert_eq!((&(-(&inf)) * &num).to_string(), "-INF");
+        assert_eq!((&(-(&inf)) / &num).to_string(), "-INF");
+    }
 
     #[test]
     fn from_integer() {
