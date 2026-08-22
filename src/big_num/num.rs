@@ -25,6 +25,88 @@ impl BigNum {
     }
 }
 
+macro_rules! impl_from_signed_integer {
+    ($type:ty, $utype:ty) => {
+        impl From<$type> for BigNum {
+            fn from(value: $type) -> Self {
+                if value >= 0 {
+                    Self {
+                        sgn: 0,
+                        num: BigUint::from(value as $utype),
+                        den: BigUint::from(1_u32),
+                        irr: true,
+                    }
+                } else {
+                    Self {
+                        sgn: 1,
+                        num: BigUint::from((-value) as $utype),
+                        den: BigUint::from(1_u32),
+                        irr: true,
+                    }
+                }
+            }
+        }
+    };
+}
+impl_from_signed_integer!(i8, u8);
+impl_from_signed_integer!(i32, u32);
+impl_from_signed_integer!(i64, u64);
+impl_from_signed_integer!(i128, u128);
+
+macro_rules! impl_from_unsigned_integer {
+    ($type:ty) => {
+        impl From<$type> for BigNum {
+            fn from(value: $type) -> Self {
+                Self {
+                    sgn: 0,
+                    num: BigUint::from(value),
+                    den: BigUint::from(1_u32),
+                    irr: true,
+                }
+            }
+        }
+    };
+}
+impl_from_unsigned_integer!(u8);
+impl_from_unsigned_integer!(u32);
+impl_from_unsigned_integer!(u64);
+impl_from_unsigned_integer!(u128);
+
+macro_rules! impl_from_float {
+    ($type:ty, $precision:literal) => {
+        impl From<$type> for BigNum {
+            /// only support value ranges in `[-2^128, 2^128]`
+            fn from(value: $type) -> Self {
+                let sgn = value.is_sign_negative() as u8;
+                if value.is_infinite() {
+                    return Self {
+                        sgn,
+                        num: BigUint::from(1_u32),
+                        den: BigUint::from(0_u32),
+                        irr: true,
+                    };
+                }
+                const PRECISOIN: u32 = $precision;
+                let int = unsafe { value.abs().to_int_unchecked::<u128>() };
+                let fra = unsafe {
+                    (value.fract() * (10.0 as $type).powi(PRECISOIN as i32))
+                        .to_int_unchecked::<u64>()
+                };
+                let mut res = Self::from(int);
+                res += &BigNum {
+                    sgn: 0,
+                    num: BigUint::from(fra),
+                    den: BigUint::from(10_u64.pow(PRECISOIN)),
+                    irr: false,
+                };
+                res
+            }
+        }
+    };
+}
+impl_from_float!(f32, 7);
+impl_from_float!(f64, 15);
+
 fn uint_gcd(a: &BigUint, b: &BigUint) -> BigUint {
     if b.is_zero() {
         a.clone()
@@ -218,6 +300,9 @@ impl Display for BigNum {
 
 impl BigNum {
     pub fn to_float_str(&self, precision: u8) -> String {
+        if self.den.is_zero() {
+            return format!("{}{}", if self.sgn == 0 { "+" } else { "-" }, "INF");
+        }
         let (q, r) = self.num.div_rem(&self.den);
         let d = r.div_decimal(&self.den, precision);
         format!("{}.{}", q, d)
@@ -227,6 +312,52 @@ impl BigNum {
 #[cfg(test)]
 mod test {
     use super::*;
+
+    #[test]
+    fn from_integer() {
+        let ineg = BigNum::from(-1_i32);
+        let ipos = BigNum::from(1_i32);
+        let u = BigNum::from(1_i32);
+        assert_eq!(
+            ineg,
+            BigNum {
+                sgn: 1,
+                num: BigUint::from(1_u32),
+                den: BigUint::from(1_u32),
+                irr: true,
+            }
+        );
+        assert_eq!(
+            ipos,
+            BigNum {
+                sgn: 0,
+                num: BigUint::from(1_u32),
+                den: BigUint::from(1_u32),
+                irr: true,
+            }
+        );
+        assert_eq!(
+            u,
+            BigNum {
+                sgn: 0,
+                num: BigUint::from(1_u32),
+                den: BigUint::from(1_u32),
+                irr: true,
+            }
+        );
+    }
+
+    #[test]
+    fn from_float_to_string() {
+        let half = BigNum::from(1.142857_f32);
+        let full = BigNum::from(1.142857142857_f64);
+        let pi = BigNum::from(std::f64::consts::PI);
+        let e = BigNum::from(std::f64::consts::E);
+        assert_eq!(half.to_float_str(6), "1.142856");
+        assert_eq!(full.to_float_str(12), "1.142857142856");
+        assert_eq!(pi.to_float_str(10), "3.1415926535");
+        assert_eq!(e.to_float_str(10), "2.7182818284");
+    }
 
     #[test]
     fn test_uint_gcd() {

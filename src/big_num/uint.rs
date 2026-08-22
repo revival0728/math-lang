@@ -53,6 +53,7 @@ macro_rules! impl_from {
 impl_from!(u8);
 impl_from!(u32);
 impl_from!(u64);
+impl_from!(u128);
 
 impl Ord for BigUint {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
