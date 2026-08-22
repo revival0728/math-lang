@@ -2,13 +2,13 @@
 
 use super::uint::BigUint;
 use std::cmp::{Ord, PartialOrd};
-use std::convert::From;
-use std::fmt::Display;
+use std::convert::{From, TryFrom};
+use std::fmt::{Debug, Display};
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
 const IRR_COND: usize = (u64::BITS * 10) as usize;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct BigNum {
     sgn: u8, // 0: positive, 1: negative
     num: BigUint,
@@ -109,6 +109,7 @@ macro_rules! impl_from_float {
                     den: BigUint::from(10_u64.pow(PRECISOIN)),
                     irr: false,
                 };
+                res.sgn = sgn;
                 res
             }
         }
@@ -116,6 +117,135 @@ macro_rules! impl_from_float {
 }
 impl_from_float!(f32, 7);
 impl_from_float!(f64, 15);
+
+impl From<BigUint> for BigNum {
+    fn from(value: BigUint) -> Self {
+        Self {
+            sgn: 0,
+            num: value,
+            den: BigUint::from(1_u32),
+            irr: true,
+        }
+    }
+}
+
+impl TryFrom<&str> for BigNum {
+    type Error = ();
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        fn is_number(s: &str) -> bool {
+            s.chars().all(|c| c.is_digit(10))
+        }
+
+        if value.is_empty() {
+            return Err(());
+        }
+        let sgn = if value.chars().nth(0).unwrap() == '-' {
+            1
+        } else {
+            0
+        };
+        let mut sci_split = (if sgn == 1 { &value[1..] } else { value }).splitn(2, ['e', 'E']);
+
+        let frac = sci_split.next().ok_or(())?;
+        let mut frac_split = frac.splitn(2, '.');
+        let int = frac_split.next().ok_or(())?;
+        if !is_number(int) {
+            return Err(());
+        }
+        let int = BigUint::from(int);
+        let dec = if let Some(dec) = frac_split.next() {
+            let exp = dec.len();
+            if !is_number(dec) {
+                return Err(());
+            }
+            let mut dec = BigUint::from(dec);
+            (dec, exp)
+        } else {
+            (BigUint::new(), 0)
+        };
+
+        let exp10 = if let Some(exp) = sci_split.next() {
+            if let Some(sidx) = exp.find(['+', '-']) {
+                if sidx != 0 {
+                    return Err(());
+                }
+                if !is_number(&exp[1..]) {
+                    return Err(());
+                }
+                if exp.chars().nth(0).unwrap() == '+' {
+                    (BigUint::from(&exp[1..]), 0_u8)
+                } else {
+                    (BigUint::from(&exp[1..]), 1_u8)
+                }
+            } else {
+                (BigUint::from(exp), 0_u8)
+            }
+        } else {
+            (BigUint::new(), 0_u8)
+        };
+
+        let int = {
+            let mut int = BigNum::from(int);
+            int.sgn = sgn;
+            int
+        };
+        let dec = {
+            let mut exp = dec.1;
+            let mut base = BigUint::from(10_u32);
+            let mut den = BigUint::from(1_u32);
+            while exp > 0 {
+                if exp & 1 == 1 {
+                    den *= &base;
+                }
+                base *= &base.clone();
+                exp >>= 1;
+            }
+            BigNum {
+                sgn,
+                num: dec.0,
+                den,
+                irr: false,
+            }
+        };
+        let exp10 = {
+            let mut exp = exp10.0;
+            let mut base = BigUint::from(10_u32);
+            let mut pow = BigUint::from(1_u32);
+            let one = BigUint::from(1_u32);
+            let two = BigUint::from(2_u32);
+            while !exp.is_zero() {
+                if &exp % &two == one {
+                    pow *= &base;
+                }
+                base *= &base.clone();
+                exp /= &two;
+            }
+            if exp10.1 == 0 {
+                BigNum {
+                    sgn: 0,
+                    num: pow,
+                    den: one,
+                    irr: true,
+                }
+            } else {
+                BigNum {
+                    sgn: 0,
+                    num: one,
+                    den: pow,
+                    irr: true,
+                }
+            }
+        };
+        Ok((&int + &dec) * &exp10)
+    }
+}
+
+impl TryFrom<String> for BigNum {
+    type Error = ();
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Self::try_from(value.as_str())
+    }
+}
 
 fn uint_gcd(a: &BigUint, b: &BigUint) -> BigUint {
     if b.is_zero() {
@@ -361,8 +491,22 @@ impl Display for BigNum {
         if self.den.is_zero() {
             write!(f, "{}{}", if self.sgn == 0 { "+" } else { "-" }, "INF")
         } else {
-            write!(f, "({})/({})", self.num, self.den)
+            write!(
+                f,
+                "({})({})/({})",
+                if self.sgn == 0 { "+" } else { "-" },
+                self.num,
+                self.den
+            )
         }
+    }
+}
+
+impl Debug for BigNum {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut s = self.clone();
+        s.reduce();
+        write!(f, "{}", s)
     }
 }
 
@@ -373,7 +517,11 @@ impl BigNum {
         }
         let (q, r) = self.num.div_rem(&self.den);
         let d = r.div_decimal(&self.den, precision);
-        format!("{}.{}", q, d)
+        if self.sgn == 0 {
+            format!("{}.{}", q, d)
+        } else {
+            format!("-{}.{}", q, d)
+        }
     }
 }
 
@@ -432,6 +580,32 @@ mod test {
         assert_eq!((&(-(&inf)) - &num).to_string(), "-INF");
         assert_eq!((&(-(&inf)) * &num).to_string(), "-INF");
         assert_eq!((&(-(&inf)) / &num).to_string(), "-INF");
+    }
+
+    #[test]
+    fn try_from_str() {
+        let int_pos = BigNum::try_from("10").unwrap();
+        let int_neg = BigNum::try_from("-10").unwrap();
+        assert_eq!(int_pos, BigNum::from(10));
+        assert_eq!(int_neg, BigNum::from(-10));
+
+        let dec = BigNum::try_from("1.234").unwrap();
+        assert_eq!(dec, BigNum::from(1.234_f64));
+
+        let sciu = BigNum::try_from("1.234E3").unwrap();
+        let scil = BigNum::try_from("1.234e3").unwrap();
+        let sci_epos = BigNum::try_from("1.234e+3").unwrap();
+        let sci_eneg = BigNum::try_from("1.234e-3").unwrap();
+        assert_eq!(sciu, BigNum::from(1.234E3_f64));
+        assert_eq!(scil, BigNum::from(1.234e3_f64));
+        assert_eq!(sci_epos, BigNum::from(1.234e+3_f64));
+        assert_eq!(sci_eneg, BigNum::from(1.234e-3_f64));
+
+        let int_sci = BigNum::try_from("1e5").unwrap();
+        assert_eq!(int_sci, BigNum::from(100000_u32));
+
+        let full = BigNum::try_from("-1.234E+3").unwrap();
+        assert_eq!(full, BigNum::from(-1.234E+3_f64));
     }
 
     #[test]
