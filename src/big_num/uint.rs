@@ -10,7 +10,7 @@ use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Rem, RemAssign, S
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct BigUint {
-    bits: UintBits,
+    pub bits: UintBits,
 }
 
 impl BigUint {
@@ -18,6 +18,12 @@ impl BigUint {
         Self {
             bits: UintBits::new(),
         }
+    }
+    pub fn pow2(n: u32) -> Self {
+        let mut uint = Self::new();
+        uint.bits.set(0);
+        uint.bits <<= n;
+        uint
     }
 }
 
