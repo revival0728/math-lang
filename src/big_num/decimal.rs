@@ -20,6 +20,7 @@ impl Decimal {
 }
 
 impl Display for Decimal {
+    // TODO: Fix leading 0 error
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         const TLOG2: f32 = 0.30103;
         let mut deci = BigUint::from(self.bits.clone());
@@ -59,12 +60,14 @@ mod test {
         let a = BigUint::from(2_u32);
         let b = BigUint::from(3_u32);
         let c = BigUint::from(7_u32);
+        let d = BigUint::from(700_u32);
         assert_eq!(one.div_decimal(&a, 6).to_string(), "500000");
         assert_eq!(one.div_decimal(&a, 15).to_string(), "500000000000000");
         assert_eq!(one.div_decimal(&b, 6).to_string(), "333333");
         assert_eq!(one.div_decimal(&b, 15).to_string(), "333333333333333");
         assert_eq!(one.div_decimal(&c, 6).to_string(), "142857");
         assert_eq!(one.div_decimal(&c, 15).to_string(), "142857142857142");
+        assert_eq!(one.div_decimal(&d, 15).to_string(), "001428571428571");
         assert_eq!(one.div_decimal(&c, 255).to_string().len(), 255);
     }
 }

@@ -70,17 +70,20 @@ impl From<BigUint> for BigNum {
 }
 
 macro_rules! impl_from_float {
-    ($type:ty, $uit:ty, $prec:literal) => {
+    ($type:ty, $prec:literal) => {
         impl From<$type> for BigNum {
+            /// only support value ranges in `[-2^128, 2^128]`
             fn from(value: $type) -> Self {
                 const PRECISION: u8 = $prec;
                 let sgn = if value.signum() < 0.0 { 1 } else { 0 };
                 let value = value.abs();
-                let int = value.trunc() as $uit;
-                let dec =
-                    (value.fract() * (10 as $type).powi(PRECISION as i32) as $type).trunc() as $uit;
-                let p10 = (10 as $uit).pow(PRECISION as u32);
-                eprintln!("INT: {}, DEC: {}", int, dec);
+                let int = unsafe { value.trunc().to_int_unchecked::<u128>() };
+                let dec = unsafe {
+                    (value.fract() * (10 as $type).powi(PRECISION as i32) as $type)
+                        .trunc()
+                        .to_int_unchecked::<u64>()
+                };
+                let p10 = (10_u64).pow(PRECISION as u32);
 
                 let int = BigNum::from(int);
                 let dec = BigNum::from(dec);
@@ -92,8 +95,106 @@ macro_rules! impl_from_float {
         }
     };
 }
-impl_from_float!(f32, u32, 7);
-impl_from_float!(f64, u64, 15);
+impl_from_float!(f32, 7);
+impl_from_float!(f64, 15);
+
+/// From scientific notation
+impl TryFrom<&str> for BigNum {
+    type Error = ();
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        fn is_number(s: &str) -> bool {
+            s.chars().all(|c| c.is_digit(10))
+        }
+
+        if value.is_empty() {
+            return Err(());
+        }
+        let sgn = if value.chars().nth(0).unwrap() == '-' {
+            1
+        } else {
+            0
+        };
+        let mut sci_split = (if sgn == 1 { &value[1..] } else { value }).splitn(2, ['e', 'E']);
+
+        let frac = sci_split.next().ok_or(())?;
+        let mut frac_split = frac.splitn(2, '.');
+        let int = frac_split.next().ok_or(())?;
+        if !is_number(int) {
+            return Err(());
+        }
+        let int = BigUint::from(int);
+        let dec = if let Some(dec) = frac_split.next() {
+            let exp = dec.len();
+            if !is_number(dec) {
+                return Err(());
+            }
+            let dec = BigUint::from(dec);
+            (dec, exp)
+        } else {
+            (BigUint::new(), 0)
+        };
+
+        let exp10 = if let Some(exp) = sci_split.next() {
+            if let Some(sidx) = exp.find(['+', '-']) {
+                if sidx != 0 {
+                    return Err(());
+                }
+                if !is_number(&exp[1..]) {
+                    return Err(());
+                }
+                if exp.chars().nth(0).unwrap() == '+' {
+                    (BigUint::from(&exp[1..]), 0_u8)
+                } else {
+                    (BigUint::from(&exp[1..]), 1_u8)
+                }
+            } else {
+                (BigUint::from(exp), 0_u8)
+            }
+        } else {
+            (BigUint::new(), 0_u8)
+        };
+
+        let int = {
+            let mut int = BigNum::from(int);
+            int.sgn = sgn;
+            int
+        };
+        let dec = {
+            let mut exp = dec.1;
+            let mut base = BigUint::from(10_u32);
+            let mut p10 = BigUint::from(1_u32);
+            while exp > 0 {
+                if exp & 1 == 1 {
+                    p10 *= &base;
+                }
+                base *= &base.clone();
+                exp >>= 1;
+            }
+            BigNum::from(dec.0)
+                .div_with_precision(&BigNum::from(p10), (dec.1 + 15).min(u8::MAX as usize) as u8)
+        };
+        let exp10 = {
+            let mut exp = exp10.0;
+            let mut base = BigUint::from(10_u32);
+            let mut pow = BigUint::from(1_u32);
+            let one = BigUint::from(1_u32);
+            let two = BigUint::from(2_u32);
+            while !exp.is_zero() {
+                if &exp % &two == one {
+                    pow *= &base;
+                }
+                base *= &base.clone();
+                exp /= &two;
+            }
+            if exp10.1 == 0 {
+                BigNum::from(pow)
+            } else {
+                BigNum::from(one).div_with_precision(&BigNum::from(pow), exp10.1)
+            }
+        };
+        Ok((&int + &dec) * &exp10)
+    }
+}
 
 impl Display for BigNum {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -114,7 +215,7 @@ impl Debug for BigNum {
 }
 
 impl BigNum {
-    pub fn float_to_str(&self, precision: u8) -> String {
+    pub fn to_float_str(&self, precision: u8) -> String {
         let pow2 = BigUint::pow2(self.exp);
         let (int, dec) = self.cff.div_rem(&pow2);
         let dec = dec.div_decimal(&pow2, precision);
@@ -171,7 +272,7 @@ impl PartialOrd for BigNum {
 }
 
 impl BigNum {
-    pub fn align_exp(a: &mut Self, b: &mut Self) {
+    fn align_exp(a: &mut Self, b: &mut Self) {
         if a.exp == b.exp {
             return;
         }
@@ -180,6 +281,11 @@ impl BigNum {
         b.cff.bits <<= target - b.exp;
         a.exp = target;
         b.exp = target;
+    }
+    pub fn abs(&self) -> Self {
+        let mut ret = self.clone();
+        ret.sgn = 0;
+        ret
     }
 }
 
@@ -223,8 +329,8 @@ impl MulAssign<&Self> for BigNum {
     }
 }
 
-impl DivAssign<&Self> for BigNum {
-    fn div_assign(&mut self, rhs: &Self) {
+impl BigNum {
+    pub fn div_assign_with_precision(&mut self, rhs: &Self, precision: u8) {
         self.sgn ^= rhs.sgn;
         let (q, r) = self.cff.div_rem(&rhs.cff);
         self.cff = q;
@@ -238,7 +344,7 @@ impl DivAssign<&Self> for BigNum {
             }
             return;
         }
-        let mut d = r.div_decimal(&rhs.cff, 15);
+        let mut d = r.div_decimal(&rhs.cff, precision);
         while d.bits.get(0) == 0 {
             d.bits >>= 1;
             d.base -= 1;
@@ -253,6 +359,17 @@ impl DivAssign<&Self> for BigNum {
             self.cff.bits <<= shift;
             self.exp = 0;
         }
+    }
+    pub fn div_with_precision(&self, rhs: &Self, precision: u8) -> Self {
+        let mut ret = self.clone();
+        ret.div_assign_with_precision(rhs, precision);
+        ret
+    }
+}
+
+impl DivAssign<&Self> for BigNum {
+    fn div_assign(&mut self, rhs: &Self) {
+        self.div_assign_with_precision(rhs, 15);
     }
 }
 
@@ -286,11 +403,46 @@ mod test {
     fn from_float_to_str() {
         let a = BigNum::from(1_u32);
         let b = BigNum::from(-1.234_f32);
+        let c = BigNum::from(1.234e-3_f64);
         let pi = BigNum::from(std::f64::consts::PI);
-        eprintln!("{:?}", b);
-        assert_eq!(a.float_to_str(5), "1.00000");
-        assert_eq!(b.float_to_str(5), "-1.23399");
-        assert_eq!(pi.float_to_str(15), "3.141592653589792");
+        eprintln!("{:?}", c);
+        assert_eq!(a.to_float_str(5), "1.00000");
+        assert_eq!(b.to_float_str(5), "-1.23399");
+        assert_eq!(c.to_float_str(7), "0.0012339");
+        assert_eq!(pi.to_float_str(15), "3.141592653589792");
+    }
+
+    #[test]
+    fn try_from_str() {
+        let eps = BigNum::from(1e-15_f64);
+
+        let int_pos = BigNum::try_from("10").unwrap();
+        let int_neg = BigNum::try_from("-10").unwrap();
+        assert_eq!(int_pos, BigNum::from(10));
+        assert_eq!(int_neg, BigNum::from(-10));
+
+        let dec = BigNum::try_from("1.234").unwrap();
+        assert!((&dec - &BigNum::from(1.234_f64)).abs() < eps);
+
+        let sciu = BigNum::try_from("1.234E3").unwrap();
+        let scil = BigNum::try_from("1.234e3").unwrap();
+        let sci_epos = BigNum::try_from("1.234e+3").unwrap();
+        let sci_eneg = BigNum::try_from("1.234e-3").unwrap();
+        assert!((&sciu - &BigNum::from(1.234E3_f64)).abs() < eps);
+        assert!((&scil - &BigNum::from(1.234e3_f64)).abs() < eps);
+        assert!((&sci_epos - &BigNum::from(1.234e+3_f64)).abs() < eps);
+        eprintln!(
+            "{}\n{}",
+            sci_eneg.to_float_str(15),
+            BigNum::from(1.234e-3_f64).to_float_str(15)
+        );
+        assert!((&sci_eneg - &BigNum::from(1.234e-3_f64)).abs() < eps);
+
+        let int_sci = BigNum::try_from("1e5").unwrap();
+        assert!((&int_sci - &BigNum::from(100000_u32)).abs() < eps);
+
+        let full = BigNum::try_from("-1.234E+3").unwrap();
+        assert!((&full - &BigNum::from(-1.234E+3_f64)).abs() < eps);
     }
 
     #[test]
