@@ -8,9 +8,9 @@ use std::fmt::Display;
 /// preventing leading zero confusion
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Decimal {
-    bits: UintBits,
-    base: u32, // maximum of base is 848 (from 10-base precision 255)
-    prec: u8,
+    pub bits: UintBits,
+    pub base: u32, // maximum of base is 848 (from 10-base precision 255)
+    pub prec: u8,
 }
 
 impl Decimal {
@@ -20,8 +20,6 @@ impl Decimal {
 }
 
 impl Display for Decimal {
-    // FIXME: I DON'T KNOW WHY THIS IS PREFECTLY WORKING
-    // TODO: Fix this function, broken when precision is not 6
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         const TLOG2: f32 = 0.30103;
         let mut deci = BigUint::from(self.bits.clone());
