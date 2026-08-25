@@ -62,7 +62,16 @@ macro_rules! impl_from {
 impl_from!(u8);
 impl_from!(u32);
 impl_from!(u64);
-impl_from!(u128);
+
+impl From<u128> for BigUint {
+    fn from(value: u128) -> Self {
+        const MASK: u128 = (1_u128 << 64) - 1;
+        let mut bits = UintBits::new();
+        bits.set_bits(0, (value >> 64) as u64);
+        bits.set_bits(0, (value & MASK) as u64);
+        Self { bits }
+    }
+}
 
 impl Ord for BigUint {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {

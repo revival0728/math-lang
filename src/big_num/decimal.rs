@@ -39,7 +39,12 @@ impl Display for Decimal {
         }
         deci /= &base2;
         let mut res = deci.to_string();
-        res.truncate(self.prec as usize);
+        let prec_usize = self.prec as usize;
+        if res.len() > prec_usize {
+            res.truncate(prec_usize);
+        } else {
+            res.push_str(&String::from_utf8(vec!['0' as u8; prec_usize - res.len()]).unwrap());
+        }
         write!(f, "{}", res)
     }
 }

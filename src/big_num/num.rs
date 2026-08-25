@@ -1,6 +1,7 @@
 use super::uint::BigUint;
 use std::cmp::{Eq, Ord, PartialEq, PartialOrd};
-use std::fmt::Debug;
+use std::convert::{From, TryFrom};
+use std::fmt::{Debug, Display};
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Sub, SubAssign};
 
 #[derive(Clone)]
@@ -21,7 +22,80 @@ impl BigNum {
     }
 }
 
-impl Debug for BigNum {
+macro_rules! impl_from_uint {
+    ($type:ty) => {
+        impl From<$type> for BigNum {
+            fn from(value: $type) -> Self {
+                Self {
+                    sgn: 0,
+                    cff: BigUint::from(value),
+                    exp: 0,
+                }
+            }
+        }
+    };
+}
+impl_from_uint!(u8);
+impl_from_uint!(u32);
+impl_from_uint!(u64);
+impl_from_uint!(u128);
+
+macro_rules! impl_from_int {
+    ($type:ty, $utype:ty) => {
+        impl From<$type> for BigNum {
+            fn from(value: $type) -> Self {
+                let sgn = if value < 0 { 1 } else { 0 };
+                Self {
+                    sgn,
+                    cff: BigUint::from(value.abs() as $utype),
+                    exp: 0,
+                }
+            }
+        }
+    };
+}
+impl_from_int!(i8, u8);
+impl_from_int!(i32, u32);
+impl_from_int!(i64, u64);
+impl_from_int!(i128, u128);
+
+impl From<BigUint> for BigNum {
+    fn from(value: BigUint) -> Self {
+        Self {
+            sgn: 0,
+            cff: value,
+            exp: 0,
+        }
+    }
+}
+
+macro_rules! impl_from_float {
+    ($type:ty, $uit:ty, $prec:literal) => {
+        impl From<$type> for BigNum {
+            fn from(value: $type) -> Self {
+                const PRECISION: u8 = $prec;
+                let sgn = if value.signum() < 0.0 { 1 } else { 0 };
+                let value = value.abs();
+                let int = value.trunc() as $uit;
+                let dec =
+                    (value.fract() * (10 as $type).powi(PRECISION as i32) as $type).trunc() as $uit;
+                let p10 = (10 as $uit).pow(PRECISION as u32);
+                eprintln!("INT: {}, DEC: {}", int, dec);
+
+                let int = BigNum::from(int);
+                let dec = BigNum::from(dec);
+                let p10 = BigNum::from(p10);
+                let mut ret = int + &(&dec / &p10);
+                ret.sgn = sgn;
+                ret
+            }
+        }
+    };
+}
+impl_from_float!(f32, u32, 7);
+impl_from_float!(f64, u64, 15);
+
+impl Display for BigNum {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -30,6 +104,21 @@ impl Debug for BigNum {
             self.cff,
             self.exp
         )
+    }
+}
+
+impl Debug for BigNum {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self)
+    }
+}
+
+impl BigNum {
+    pub fn float_to_str(&self, precision: u8) -> String {
+        let pow2 = BigUint::pow2(self.exp);
+        let (int, dec) = self.cff.div_rem(&pow2);
+        let dec = dec.div_decimal(&pow2, precision);
+        format!("{}{}.{}", if self.sgn == 1 { "-" } else { "" }, int, dec)
     }
 }
 
@@ -192,6 +281,17 @@ impl_oper!(Div, div, /, /=);
 #[cfg(test)]
 mod test {
     use super::*;
+
+    #[test]
+    fn from_float_to_str() {
+        let a = BigNum::from(1_u32);
+        let b = BigNum::from(-1.234_f32);
+        let pi = BigNum::from(std::f64::consts::PI);
+        eprintln!("{:?}", b);
+        assert_eq!(a.float_to_str(5), "1.00000");
+        assert_eq!(b.float_to_str(5), "-1.23399");
+        assert_eq!(pi.float_to_str(15), "3.141592653589792");
+    }
 
     #[test]
     fn eq() {
@@ -563,8 +663,8 @@ mod test {
             &n / &n / &deci,
             BigNum {
                 sgn: 0,
-                cff: BigUint::from(1_u32),
-                exp: 1
+                cff: BigUint::from(1501199875790165_u64),
+                exp: 52
             }
         );
     }
