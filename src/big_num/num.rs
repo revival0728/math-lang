@@ -202,6 +202,13 @@ impl TryFrom<&str> for BigNum {
     }
 }
 
+impl TryFrom<String> for BigNum {
+    type Error = ();
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Self::try_from(value.as_str())
+    }
+}
+
 impl Display for BigNum {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
