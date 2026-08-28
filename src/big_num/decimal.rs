@@ -29,6 +29,7 @@ impl Display for Decimal {
             bits.set(self.base as usize);
             BigUint::from(bits)
         };
+        let digit_cnt = (self.base as f32 * TLOG2).trunc() as usize;
         let mut exp = (self.base as f32 * TLOG2).trunc() as u32;
         let mut base10 = BigUint::from(10_u32);
         while exp > 0 {
@@ -40,11 +41,16 @@ impl Display for Decimal {
         }
         deci /= &base2;
         let mut res = deci.to_string();
+        if res.len() < digit_cnt {
+            let mut leading = "0".repeat(digit_cnt - res.len());
+            leading.push_str(&res);
+            res = leading;
+        }
         let prec_usize = self.prec as usize;
         if res.len() > prec_usize {
             res.truncate(prec_usize);
         } else {
-            res.push_str(&String::from_utf8(vec!['0' as u8; prec_usize - res.len()]).unwrap());
+            res.push_str(&"0".repeat(prec_usize - res.len()));
         }
         write!(f, "{}", res)
     }

@@ -170,26 +170,32 @@ impl TryFrom<&str> for BigNum {
                 base *= &base.clone();
                 exp >>= 1;
             }
-            BigNum::from(dec.0)
-                .div_with_precision(&BigNum::from(p10), (dec.1 + 15).min(u8::MAX as usize) as u8)
+            let mut dec = BigNum::from(dec.0)
+                .div_with_precision(&BigNum::from(p10), (dec.1 + 15).min(u8::MAX as usize) as u8);
+            dec.sgn = sgn;
+            dec
         };
         let exp10 = {
+            let prec = if exp10.0 <= BigUint::from(255_u8 - 15_u8) {
+                u8::from_le_bytes([exp10.0.bits.to_le_bytes()[0]]) + 15_u8
+            } else {
+                255_u8
+            };
             let mut exp = exp10.0;
             let mut base = BigUint::from(10_u32);
             let mut pow = BigUint::from(1_u32);
             let one = BigUint::from(1_u32);
-            let two = BigUint::from(2_u32);
             while !exp.is_zero() {
-                if &exp % &two == one {
+                if exp.bits.get(0) == 1 {
                     pow *= &base;
                 }
                 base *= &base.clone();
-                exp /= &two;
+                exp.bits >>= 1;
             }
             if exp10.1 == 0 {
                 BigNum::from(pow)
             } else {
-                BigNum::from(one).div_with_precision(&BigNum::from(pow), exp10.1)
+                BigNum::from(one).div_with_precision(&BigNum::from(pow), prec)
             }
         };
         Ok((&int + &dec) * &exp10)
@@ -405,7 +411,6 @@ mod test {
         let b = BigNum::from(-1.234_f32);
         let c = BigNum::from(1.234e-3_f64);
         let pi = BigNum::from(std::f64::consts::PI);
-        eprintln!("{:?}", c);
         assert_eq!(a.to_float_str(5), "1.00000");
         assert_eq!(b.to_float_str(5), "-1.23399");
         assert_eq!(c.to_float_str(7), "0.0012339");
@@ -431,11 +436,6 @@ mod test {
         assert!((&sciu - &BigNum::from(1.234E3_f64)).abs() < eps);
         assert!((&scil - &BigNum::from(1.234e3_f64)).abs() < eps);
         assert!((&sci_epos - &BigNum::from(1.234e+3_f64)).abs() < eps);
-        eprintln!(
-            "{}\n{}",
-            sci_eneg.to_float_str(15),
-            BigNum::from(1.234e-3_f64).to_float_str(15)
-        );
         assert!((&sci_eneg - &BigNum::from(1.234e-3_f64)).abs() < eps);
 
         let int_sci = BigNum::try_from("1e5").unwrap();
