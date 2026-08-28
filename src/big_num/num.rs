@@ -211,6 +211,12 @@ impl TryFrom<String> for BigNum {
 
 impl Display for BigNum {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.to_float_str(15))
+    }
+}
+
+impl Debug for BigNum {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
             "({})({})*(2^(-{}))",
@@ -218,12 +224,6 @@ impl Display for BigNum {
             self.cff,
             self.exp
         )
-    }
-}
-
-impl Debug for BigNum {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self)
     }
 }
 
