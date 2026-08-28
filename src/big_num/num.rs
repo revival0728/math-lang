@@ -2,7 +2,7 @@ use super::uint::BigUint;
 use std::cmp::{Eq, Ord, PartialEq, PartialOrd};
 use std::convert::{From, TryFrom};
 use std::fmt::{Debug, Display};
-use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Sub, SubAssign};
+use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
 #[derive(Clone)]
 /// Structure stores big numbers in form of `(+/-) cff * 2^(-exp)`
@@ -10,6 +10,8 @@ pub struct BigNum {
     sgn: u8, // 0: positive, 1: negative
     cff: BigUint,
     exp: u32,
+    inf: i8, // 0: Not INF, 1: +INF, -1: -INF, ignore self.sgn
+    nan: bool,
 }
 
 impl BigNum {
@@ -18,6 +20,35 @@ impl BigNum {
             sgn: 0,
             cff: BigUint::new(),
             exp: 0,
+            inf: 0,
+            nan: false,
+        }
+    }
+    pub fn inf() -> Self {
+        Self {
+            sgn: 0,
+            cff: BigUint::new(),
+            exp: 0,
+            inf: 1,
+            nan: false,
+        }
+    }
+    pub fn neg_inf() -> Self {
+        Self {
+            sgn: 0,
+            cff: BigUint::new(),
+            exp: 0,
+            inf: -1,
+            nan: false,
+        }
+    }
+    pub fn nan() -> Self {
+        Self {
+            sgn: 0,
+            cff: BigUint::new(),
+            exp: 0,
+            inf: -1,
+            nan: true,
         }
     }
 }
@@ -30,6 +61,8 @@ macro_rules! impl_from_uint {
                     sgn: 0,
                     cff: BigUint::from(value),
                     exp: 0,
+                    inf: 0,
+                    nan: false,
                 }
             }
         }
@@ -49,6 +82,8 @@ macro_rules! impl_from_int {
                     sgn,
                     cff: BigUint::from(value.abs() as $utype),
                     exp: 0,
+                    inf: 0,
+                    nan: false,
                 }
             }
         }
@@ -65,6 +100,8 @@ impl From<BigUint> for BigNum {
             sgn: 0,
             cff: value,
             exp: 0,
+            inf: 0,
+            nan: false,
         }
     }
 }
@@ -76,6 +113,14 @@ macro_rules! impl_from_float {
             fn from(value: $type) -> Self {
                 const PRECISION: u8 = $prec;
                 let sgn = if value.signum() < 0.0 { 1 } else { 0 };
+                if value.is_infinite() {
+                    let mut res = Self::inf();
+                    res.sgn ^= sgn;
+                    return res;
+                }
+                if value.is_nan() {
+                    return Self::nan();
+                }
                 let value = value.abs();
                 let int = unsafe { value.trunc().to_int_unchecked::<u128>() };
                 let dec = unsafe {
@@ -217,27 +262,60 @@ impl Display for BigNum {
 
 impl Debug for BigNum {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "({})({})*(2^(-{}))",
-            if self.sgn == 0 { "+" } else { "-" },
-            self.cff,
-            self.exp
-        )
+        if self.nan {
+            write!(f, "{}", "NaN")
+        } else if self.inf != 0 {
+            use std::cmp::Ordering::{Equal, Greater, Less};
+            write!(
+                f,
+                "{}",
+                match self.inf.cmp(&0) {
+                    Less => "-INF",
+                    Greater => "+INF",
+                    Equal => panic!("IMPOSSIBLE"),
+                }
+            )
+        } else {
+            write!(
+                f,
+                "({})({})*(2^(-{}))",
+                if self.sgn == 0 { "+" } else { "-" },
+                self.cff,
+                self.exp
+            )
+        }
     }
 }
 
 impl BigNum {
     pub fn to_float_str(&self, precision: u8) -> String {
-        let pow2 = BigUint::pow2(self.exp);
-        let (int, dec) = self.cff.div_rem(&pow2);
-        let dec = dec.div_decimal(&pow2, precision);
-        format!("{}{}.{}", if self.sgn == 1 { "-" } else { "" }, int, dec)
+        if self.nan {
+            "NaN".to_owned()
+        } else if self.inf != 0 {
+            use std::cmp::Ordering::{Equal, Greater, Less};
+            match self.inf.cmp(&0) {
+                Less => "-INF",
+                Greater => "+INF",
+                Equal => panic!("IMPOSSIBLE"),
+            }
+            .to_owned()
+        } else {
+            let pow2 = BigUint::pow2(self.exp);
+            let (int, dec) = self.cff.div_rem(&pow2);
+            let dec = dec.div_decimal(&pow2, precision);
+            format!("{}{}.{}", if self.sgn == 1 { "-" } else { "" }, int, dec)
+        }
     }
 }
 
 impl PartialEq for BigNum {
     fn eq(&self, other: &Self) -> bool {
+        if self.nan || other.nan {
+            return self.nan && other.nan;
+        }
+        if self.inf != 0 || other.inf != 0 {
+            return self.inf == other.inf;
+        }
         if self.cff.is_zero() && other.cff.is_zero() {
             return true;
         }
@@ -259,6 +337,12 @@ impl Eq for BigNum {}
 impl Ord for BigNum {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         use std::cmp::Ordering::{Equal, Greater, Less};
+        if self.nan || other.nan {
+            return Equal;
+        }
+        if self.inf != 0 || other.inf != 0 {
+            return self.inf.cmp(&other.inf);
+        }
         if self.cff.is_zero() && other.cff.is_zero() {
             return Equal;
         }
@@ -295,15 +379,48 @@ impl BigNum {
         a.exp = target;
         b.exp = target;
     }
+    pub fn is_finite_number(&self) -> bool {
+        !self.nan && self.inf == 0
+    }
     pub fn abs(&self) -> Self {
+        if !self.is_finite_number() {
+            return Self::nan();
+        }
         let mut ret = self.clone();
         ret.sgn = 0;
+        ret.inf = ret.inf.abs();
+        ret
+    }
+}
+
+impl Neg for &BigNum {
+    type Output = BigNum;
+    fn neg(self) -> Self::Output {
+        let mut ret = self.clone();
+        if ret.inf != 0 {
+            ret.inf *= -1;
+        } else {
+            ret.sgn ^= 1;
+        }
         ret
     }
 }
 
 impl AddAssign<&Self> for BigNum {
     fn add_assign(&mut self, rhs: &Self) {
+        if self.nan || rhs.nan {
+            self.nan = true;
+            return;
+        }
+        if self.inf != 0 || rhs.inf != 0 {
+            self.inf = (self.inf + rhs.inf).signum();
+            if self.inf == 0 {
+                self.sgn = 0;
+                self.cff = BigUint::from(0_u32);
+                self.exp = 0;
+            }
+            return;
+        }
         let mut rhs = rhs.clone();
         Self::align_exp(self, &mut rhs);
         if self.sgn ^ rhs.sgn == 0 {
@@ -320,6 +437,19 @@ impl AddAssign<&Self> for BigNum {
 
 impl SubAssign<&Self> for BigNum {
     fn sub_assign(&mut self, rhs: &Self) {
+        if self.nan || rhs.nan {
+            self.nan = true;
+            return;
+        }
+        if self.inf != 0 || rhs.inf != 0 {
+            self.inf = (self.inf - rhs.inf).signum();
+            if self.inf == 0 {
+                self.sgn = 0;
+                self.cff = BigUint::from(0_u32);
+                self.exp = 0;
+            }
+            return;
+        }
         let mut rhs = rhs.clone();
         Self::align_exp(self, &mut rhs);
         if self.sgn ^ rhs.sgn == 1 {
@@ -336,6 +466,35 @@ impl SubAssign<&Self> for BigNum {
 
 impl MulAssign<&Self> for BigNum {
     fn mul_assign(&mut self, rhs: &Self) {
+        if self.nan || rhs.nan {
+            self.nan = true;
+            return;
+        }
+        if self.inf != 0 && rhs.inf != 0 {
+            self.inf = (self.inf * rhs.inf).signum();
+            return;
+        }
+        if self.inf != 0 || rhs.inf != 0 {
+            if self.cff.is_zero() && self.inf == 0 {
+                return;
+            }
+            if rhs.cff.is_zero() && rhs.inf == 0 {
+                self.sgn = 0;
+                self.cff = BigUint::new();
+                self.exp = 0;
+                self.inf = 0;
+                return;
+            }
+            if self.inf != 0 {
+                self.inf *= if rhs.sgn == 0 { 1 } else { -1 };
+                return;
+            }
+            if rhs.inf != 0 {
+                self.inf = rhs.inf;
+                self.inf *= if self.sgn == 0 { 1 } else { -1 };
+                return;
+            }
+        }
         self.sgn ^= rhs.sgn;
         self.exp += rhs.exp;
         self.cff *= &rhs.cff;
@@ -344,6 +503,41 @@ impl MulAssign<&Self> for BigNum {
 
 impl BigNum {
     pub fn div_assign_with_precision(&mut self, rhs: &Self, precision: u8) {
+        if self.nan || rhs.nan {
+            self.nan = true;
+            return;
+        }
+        if self.inf != 0 && rhs.inf != 0 {
+            self.sgn = if self.inf * rhs.inf >= 0 { 0 } else { 1 };
+            self.cff = BigUint::from(1_u32);
+            self.exp = 0;
+            self.inf = 0;
+            return;
+        }
+        if self.inf != 0 || rhs.inf != 0 {
+            if rhs.cff.is_zero() && rhs.inf == 0 {
+                return;
+            }
+            if self.inf != 0 {
+                self.inf *= if rhs.sgn == 0 { 1 } else { -1 };
+                return;
+            }
+            if rhs.inf != 0 {
+                self.sgn = 0;
+                self.cff = BigUint::new();
+                self.exp = 0;
+                self.inf = 0;
+                return;
+            }
+        }
+        if rhs.cff.is_zero() {
+            if self.cff.is_zero() {
+                self.nan = true;
+                return;
+            }
+            self.inf = if self.sgn ^ rhs.sgn == 0 { 1 } else { -1 };
+            return;
+        }
         self.sgn ^= rhs.sgn;
         let (q, r) = self.cff.div_rem(&rhs.cff);
         self.cff = q;
@@ -458,26 +652,36 @@ mod test {
             sgn: 0,
             cff: BigUint::from(1_u32),
             exp: 0,
+            inf: 0,
+            nan: false,
         };
         let b = BigNum {
             sgn: 0,
             cff: BigUint::from(2_u32),
             exp: 1,
+            inf: 0,
+            nan: false,
         };
         let c = BigNum {
             sgn: 1,
             cff: BigUint::from(2_u32),
             exp: 1,
+            inf: 0,
+            nan: false,
         };
         let d = BigNum {
             sgn: 0,
             cff: BigUint::from(1_u32),
             exp: 0,
+            inf: 0,
+            nan: false,
         };
         let e = BigNum {
             sgn: 0,
             cff: BigUint::from(3_u32),
             exp: 0,
+            inf: 0,
+            nan: false,
         };
         assert_eq!(a == b, true);
         assert_eq!(a == c, false);
@@ -489,13 +693,34 @@ mod test {
             sgn: 0,
             cff: BigUint::from(0_u32),
             exp: 0,
+            inf: 0,
+            nan: false,
         };
         let neg_z = BigNum {
             sgn: 0,
             cff: BigUint::from(0_u32),
             exp: 0,
+            inf: 0,
+            nan: false,
         };
         assert_eq!(pos_z == neg_z, true);
+
+        let pos_inf = BigNum {
+            sgn: 0,
+            cff: BigUint::new(),
+            exp: 0,
+            inf: 1,
+            nan: false,
+        };
+        let neg_inf = BigNum {
+            sgn: 0,
+            cff: BigUint::new(),
+            exp: 0,
+            inf: -1,
+            nan: false,
+        };
+        assert_eq!(pos_inf == pos_inf, true);
+        assert_eq!(pos_inf != neg_inf, true);
     }
 
     #[test]
@@ -504,21 +729,29 @@ mod test {
             sgn: 0,
             cff: BigUint::from(1_u32),
             exp: 0,
+            inf: 0,
+            nan: false,
         };
         let b = BigNum {
             sgn: 0,
             cff: BigUint::from(2_u32),
             exp: 0,
+            inf: 0,
+            nan: false,
         };
         let c = BigNum {
             sgn: 0,
             cff: BigUint::from(1_u32),
             exp: 5,
+            inf: 0,
+            nan: false,
         };
         let d = BigNum {
             sgn: 1,
             cff: BigUint::from(1000_u32),
             exp: 0,
+            inf: 0,
+            nan: false,
         };
         assert_eq!(a < b, true);
         assert_eq!(a > b, false);
@@ -531,14 +764,52 @@ mod test {
             sgn: 0,
             cff: BigUint::from(0_u32),
             exp: 0,
+            inf: 0,
+            nan: false,
         };
         let neg_z = BigNum {
             sgn: 0,
             cff: BigUint::from(0_u32),
             exp: 0,
+            inf: 0,
+            nan: false,
         };
         assert_eq!(pos_z <= neg_z, true);
         assert_eq!(pos_z >= neg_z, true);
+
+        let pos_inf = BigNum {
+            sgn: 0,
+            cff: BigUint::new(),
+            exp: 0,
+            inf: 1,
+            nan: false,
+        };
+        let neg_inf = BigNum {
+            sgn: 0,
+            cff: BigUint::new(),
+            exp: 0,
+            inf: -1,
+            nan: false,
+        };
+        assert_eq!(pos_inf > pos_inf, false);
+        assert_eq!(pos_inf < pos_inf, false);
+        assert_eq!(pos_inf < neg_inf, false);
+        assert_eq!(pos_inf > neg_inf, true);
+    }
+
+    #[test]
+    fn neg() {
+        let n = BigNum {
+            sgn: 0,
+            cff: BigUint::from(1_u32),
+            exp: 0,
+            inf: 0,
+            nan: false,
+        };
+        let zero = BigNum::new();
+        assert_eq!(n > zero, true);
+        let n = -&n;
+        assert_eq!(n < zero, true);
     }
 
     #[test]
@@ -547,26 +818,36 @@ mod test {
             sgn: 0,
             cff: BigUint::from(1_u32),
             exp: 0,
+            inf: 0,
+            nan: false,
         };
         let b = BigNum {
             sgn: 0,
             cff: BigUint::from(1_u32),
             exp: 0,
+            inf: 0,
+            nan: false,
         };
         let c = BigNum {
             sgn: 0,
             cff: BigUint::from(2_u32),
             exp: 1,
+            inf: 0,
+            nan: false,
         };
         let d = BigNum {
             sgn: 1,
             cff: BigUint::from(2_u32),
             exp: 1,
+            inf: 0,
+            nan: false,
         };
         let e = BigNum {
             sgn: 1,
             cff: BigUint::from(3_u32),
             exp: 0,
+            inf: 0,
+            nan: false,
         };
         a += &b;
         assert_eq!(
@@ -574,7 +855,9 @@ mod test {
             BigNum {
                 sgn: 0,
                 cff: BigUint::from(2_u32),
-                exp: 0
+                exp: 0,
+                inf: 0,
+                nan: false,
             }
         );
         a += &c;
@@ -583,7 +866,9 @@ mod test {
             BigNum {
                 sgn: 0,
                 cff: BigUint::from(6_u32),
-                exp: 1
+                exp: 1,
+                inf: 0,
+                nan: false,
             }
         );
         a += &d;
@@ -592,7 +877,9 @@ mod test {
             BigNum {
                 sgn: 0,
                 cff: BigUint::from(4_u32),
-                exp: 1
+                exp: 1,
+                inf: 0,
+                nan: false,
             }
         );
         a += &e;
@@ -601,9 +888,34 @@ mod test {
             BigNum {
                 sgn: 1,
                 cff: BigUint::from(1_u32),
-                exp: 0
+                exp: 0,
+                inf: 0,
+                nan: false,
             }
         );
+
+        let pos_inf = BigNum {
+            sgn: 0,
+            cff: BigUint::new(),
+            exp: 0,
+            inf: 1,
+            nan: false,
+        };
+        let neg_inf = BigNum {
+            sgn: 0,
+            cff: BigUint::new(),
+            exp: 0,
+            inf: -1,
+            nan: false,
+        };
+        a += &pos_inf;
+        assert_eq!(a, pos_inf);
+        a += &pos_inf;
+        assert_eq!(a, pos_inf);
+        a += &neg_inf;
+        assert_eq!(a, BigNum::new());
+        a += &neg_inf;
+        assert_eq!(a, neg_inf);
     }
 
     #[test]
@@ -612,21 +924,29 @@ mod test {
             sgn: 0,
             cff: BigUint::from(1_u32),
             exp: 0,
+            inf: 0,
+            nan: false,
         };
         let b = BigNum {
             sgn: 0,
             cff: BigUint::from(1_u32),
             exp: 0,
+            inf: 0,
+            nan: false,
         };
         let c = BigNum {
             sgn: 0,
             cff: BigUint::from(2_u32),
             exp: 1,
+            inf: 0,
+            nan: false,
         };
         let d = BigNum {
             sgn: 1,
             cff: BigUint::from(2_u32),
             exp: 1,
+            inf: 0,
+            nan: false,
         };
         a -= &b;
         assert_eq!(
@@ -634,7 +954,9 @@ mod test {
             BigNum {
                 sgn: 0,
                 cff: BigUint::from(0_u32),
-                exp: 0
+                exp: 0,
+                inf: 0,
+                nan: false,
             }
         );
         a -= &c;
@@ -643,7 +965,9 @@ mod test {
             BigNum {
                 sgn: 1,
                 cff: BigUint::from(2_u32),
-                exp: 1
+                exp: 1,
+                inf: 0,
+                nan: false,
             }
         );
         a -= &d;
@@ -652,9 +976,34 @@ mod test {
             BigNum {
                 sgn: 0,
                 cff: BigUint::from(0_u32),
-                exp: 1
+                exp: 1,
+                inf: 0,
+                nan: false,
             }
         );
+
+        let pos_inf = BigNum {
+            sgn: 0,
+            cff: BigUint::new(),
+            exp: 0,
+            inf: 1,
+            nan: false,
+        };
+        let neg_inf = BigNum {
+            sgn: 0,
+            cff: BigUint::new(),
+            exp: 0,
+            inf: -1,
+            nan: false,
+        };
+        a -= &pos_inf;
+        assert_eq!(a, neg_inf);
+        a -= &pos_inf;
+        assert_eq!(a, neg_inf);
+        a -= &neg_inf;
+        assert_eq!(a, BigNum::new());
+        a -= &neg_inf;
+        assert_eq!(a, pos_inf);
     }
 
     #[test]
@@ -663,21 +1012,29 @@ mod test {
             sgn: 0,
             cff: BigUint::from(1_u32),
             exp: 0,
+            inf: 0,
+            nan: false,
         };
         let b = BigNum {
             sgn: 0,
             cff: BigUint::from(2_u32),
             exp: 0,
+            inf: 0,
+            nan: false,
         };
         let c = BigNum {
             sgn: 1,
             cff: BigUint::from(3_u32),
             exp: 0,
+            inf: 0,
+            nan: false,
         };
         let d = BigNum {
             sgn: 0,
             cff: BigUint::from(1_u32),
             exp: 3,
+            inf: 0,
+            nan: false,
         };
         a *= &b;
         assert_eq!(
@@ -685,7 +1042,9 @@ mod test {
             BigNum {
                 sgn: 0,
                 cff: BigUint::from(2_u32),
-                exp: 0
+                exp: 0,
+                inf: 0,
+                nan: false,
             }
         );
         a *= &c;
@@ -694,7 +1053,9 @@ mod test {
             BigNum {
                 sgn: 1,
                 cff: BigUint::from(6_u32),
-                exp: 0
+                exp: 0,
+                inf: 0,
+                nan: false,
             }
         );
         a *= &d;
@@ -703,9 +1064,45 @@ mod test {
             BigNum {
                 sgn: 1,
                 cff: BigUint::from(6_u32),
-                exp: 3
+                exp: 3,
+                inf: 0,
+                nan: false,
             }
         );
+
+        let pos_inf = BigNum {
+            sgn: 0,
+            cff: BigUint::new(),
+            exp: 0,
+            inf: 1,
+            nan: false,
+        };
+        let neg_inf = BigNum {
+            sgn: 0,
+            cff: BigUint::new(),
+            exp: 0,
+            inf: -1,
+            nan: false,
+        };
+        let mut zero = BigNum::new();
+        a *= &neg_inf;
+        assert_eq!(a, pos_inf);
+        a *= &pos_inf;
+        assert_eq!(a, pos_inf);
+        a *= &pos_inf;
+        assert_eq!(a, pos_inf);
+        a *= &neg_inf;
+        assert_eq!(a, neg_inf);
+        a *= &neg_inf;
+        assert_eq!(a, pos_inf);
+        a *= &c;
+        assert_eq!(a, neg_inf);
+        a *= &c;
+        assert_eq!(a, pos_inf);
+        a *= &zero;
+        assert_eq!(a, zero);
+        zero *= &pos_inf;
+        assert_eq!(zero, BigNum::new());
     }
 
     #[test]
@@ -714,26 +1111,36 @@ mod test {
             sgn: 0,
             cff: BigUint::from(27_u32),
             exp: 1,
+            inf: 0,
+            nan: false,
         };
         let b = BigNum {
             sgn: 0,
             cff: BigUint::from(3_u32),
             exp: 0,
+            inf: 0,
+            nan: false,
         };
         let c = BigNum {
             sgn: 1,
             cff: BigUint::from(3_u32),
             exp: 0,
+            inf: 0,
+            nan: false,
         };
         let d = BigNum {
             sgn: 1,
             cff: BigUint::from(3_u32),
             exp: 1,
+            inf: 0,
+            nan: false,
         };
         let e = BigNum {
             sgn: 0,
             cff: BigUint::from(1_u32),
             exp: 3,
+            inf: 0,
+            nan: false,
         };
         a /= &b;
         assert_eq!(
@@ -741,7 +1148,9 @@ mod test {
             BigNum {
                 sgn: 0,
                 cff: BigUint::from(9_u32),
-                exp: 1
+                exp: 1,
+                inf: 0,
+                nan: false,
             }
         );
         a /= &c;
@@ -750,7 +1159,9 @@ mod test {
             BigNum {
                 sgn: 1,
                 cff: BigUint::from(3_u32),
-                exp: 1
+                exp: 1,
+                inf: 0,
+                nan: false,
             }
         );
         a /= &d;
@@ -759,7 +1170,9 @@ mod test {
             BigNum {
                 sgn: 0,
                 cff: BigUint::from(1_u32),
-                exp: 0
+                exp: 0,
+                inf: 0,
+                nan: false,
             }
         );
         a /= &e;
@@ -768,9 +1181,51 @@ mod test {
             BigNum {
                 sgn: 0,
                 cff: BigUint::from(8_u32),
-                exp: 0
+                exp: 0,
+                inf: 0,
+                nan: false,
             }
         );
+
+        let pos_inf = BigNum {
+            sgn: 0,
+            cff: BigUint::new(),
+            exp: 0,
+            inf: 1,
+            nan: false,
+        };
+        let neg_inf = BigNum {
+            sgn: 0,
+            cff: BigUint::new(),
+            exp: 0,
+            inf: -1,
+            nan: false,
+        };
+        let one = BigNum {
+            sgn: 0,
+            cff: BigUint::from(1_u32),
+            exp: 0,
+            inf: 0,
+            nan: false,
+        };
+        let mut zero = BigNum::new();
+
+        a /= &zero;
+        assert_eq!(a, pos_inf);
+        a /= &zero;
+        assert_eq!(a, pos_inf);
+        a /= &(-&one);
+        assert_eq!(a, neg_inf);
+        a /= &pos_inf;
+        assert_eq!(a, -&one);
+        a /= &pos_inf;
+        assert_eq!(a, zero);
+        a /= &pos_inf;
+        assert_eq!(a, zero);
+        a /= &zero;
+        assert_eq!(a, BigNum::nan());
+        zero /= &pos_inf;
+        assert_eq!(zero, BigNum::new());
     }
 
     #[test]
@@ -779,13 +1234,17 @@ mod test {
             sgn: 0,
             cff: BigUint::from(1_u32),
             exp: 1,
+            inf: 0,
+            nan: false,
         };
         assert_eq!(
             &n + &n + &n,
             BigNum {
                 sgn: 0,
                 cff: BigUint::from(3_u32),
-                exp: 1
+                exp: 1,
+                inf: 0,
+                nan: false,
             }
         );
         assert_eq!(
@@ -793,7 +1252,9 @@ mod test {
             BigNum {
                 sgn: 1,
                 cff: BigUint::from(1_u32),
-                exp: 1
+                exp: 1,
+                inf: 0,
+                nan: false,
             }
         );
         assert_eq!(
@@ -801,7 +1262,9 @@ mod test {
             BigNum {
                 sgn: 0,
                 cff: BigUint::from(1_u32),
-                exp: 3
+                exp: 3,
+                inf: 0,
+                nan: false,
             }
         );
         assert_eq!(
@@ -809,7 +1272,9 @@ mod test {
             BigNum {
                 sgn: 0,
                 cff: BigUint::from(2_u32),
-                exp: 0
+                exp: 0,
+                inf: 0,
+                nan: false,
             }
         );
 
@@ -817,13 +1282,17 @@ mod test {
             sgn: 0,
             cff: BigUint::from(3_u32),
             exp: 0,
+            inf: 0,
+            nan: false,
         };
         assert_eq!(
             &n / &n / &deci,
             BigNum {
                 sgn: 0,
                 cff: BigUint::from(1501199875790165_u64),
-                exp: 52
+                exp: 52,
+                inf: 0,
+                nan: false,
             }
         );
     }

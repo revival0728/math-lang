@@ -1,5 +1,5 @@
 use std::convert::From;
-use std::fmt::{Debug, Write};
+use std::fmt::Debug;
 use std::iter::{DoubleEndedIterator, Iterator};
 use std::ops::{
     BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Not, Shl, ShlAssign, Shr,
