@@ -1,5 +1,6 @@
-pub mod decimal;
-pub mod math;
+mod decimal;
 pub mod num;
-pub mod ubits;
-pub mod uint;
+mod ubits;
+mod uint;
+
+pub use num::BigNum;
