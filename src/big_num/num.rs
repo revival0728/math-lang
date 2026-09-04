@@ -61,6 +61,25 @@ impl BigNum {
         lg.cff.bits <<= self.cff.bit_count();
         lg
     }
+    pub fn trunc(&self) -> Self {
+        let mut ret = self.clone();
+        ret.cff.bits >>= ret.exp;
+        ret.exp = 0;
+        ret
+    }
+    pub fn fract(&self) -> Self {
+        let mut ret = BigNum::new();
+        ret.sgn = self.sgn;
+        ret.nan = self.nan;
+        ret.inf = self.inf;
+        ret.exp = self.exp;
+        for i in 0..self.exp as usize {
+            if self.cff.bits.get(i) == 1 {
+                ret.cff.bits.set(i);
+            }
+        }
+        ret
+    }
     pub fn abs(&self) -> Self {
         if !self.is_finite_number() {
             return Self::nan();
@@ -101,18 +120,10 @@ impl BigNum {
             int
         };
         let dec = {
-            let mut dec = BigNum::from(1);
-            let mut squ = BigNum::from(2);
-            for i in 0..self.exp.min(60) {
-                squ = squ.sqrt();
-                squ.trunc_with_precision(60);
-                let bit = self.cff.bits.get((self.exp - i - 1) as usize);
-                if bit == 1 {
-                    dec *= &squ;
-                    dec.trunc_with_precision(60);
-                }
-            }
-            dec
+            let mut dec_exp = self.fract();
+            dec_exp.trunc_with_precision(1020);
+            let dec_exp = dec_exp.to_f64_unchecked();
+            BigNum::from(2_f64.powf(dec_exp))
         };
         if self.sgn == 0 {
             int * &dec
@@ -127,10 +138,9 @@ impl BigNum {
         let lg2e = BigNum::from(std::f64::consts::LOG2_E);
         (self * &lg2e).exp2()
     }
-    pub fn ln(&self) -> Self {
-        if !self.is_finite_number() || self.sgn == 1 {
-            return Self::nan();
-        }
+    /// scale cff part down to 1.xxx...
+    /// return `(BigNum with same value, (shift exp sign, shift exp value))`
+    fn log_sdm(&self) -> (Self, (u8, u32)) {
         let bl = self.cff.bits.bit_len() as u32;
         let exp = {
             if bl - 1 >= self.exp {
@@ -145,48 +155,57 @@ impl BigNum {
         } else {
             m.exp -= exp.1;
         }
-        let mut one = BigNum::from(1);
-        let two = BigNum::from(2);
-        let mut log = BigNum::new();
-        let mut y = (&m - &one) / &(&m + &one);
-        let y2 = &y * &y;
-        for _ in 0..10 + (bl >> 3) {
-            log += &(&y / &one);
-            y *= &y2;
-            one += &two;
+        (m, exp)
+    }
+    pub fn ln(&self) -> Self {
+        if !self.is_finite_number() || self.sgn == 1 {
+            return Self::nan();
         }
-        log *= &two;
-
-        let ln2 = BigNum::from(std::f64::consts::LN_2);
+        use std::f64::consts::LN_2;
+        let (m, exp) = self.log_sdm();
+        let m = m.to_f64_unchecked();
+        let log_cff = BigNum::from(m.ln());
+        let log_exp = BigNum::from(exp.1) * &BigNum::from(LN_2);
         if exp.0 == 0 {
-            log + &(BigNum::from(exp.1) * &ln2)
+            log_cff + &log_exp
         } else {
-            log - &(BigNum::from(exp.1) * &ln2)
+            log_cff - &log_exp
         }
     }
     pub fn log2(&self) -> Self {
         if !self.is_finite_number() || self.sgn == 1 {
             return Self::nan();
         }
-        self.ln() / &BigNum::from(std::f64::consts::LN_2)
+        let (m, exp) = self.log_sdm();
+        let m = m.to_f64_unchecked();
+        let log_cff = BigNum::from(m.log2());
+        let log_exp = BigNum::from(exp.1);
+        if exp.0 == 0 {
+            log_cff + &log_exp
+        } else {
+            log_cff - &log_exp
+        }
     }
     pub fn log10(&self) -> Self {
         if !self.is_finite_number() || self.sgn == 1 {
             return Self::nan();
         }
-        self.ln() / &BigNum::from(std::f64::consts::LN_10)
+        use std::f64::consts::LOG10_2;
+        let (m, exp) = self.log_sdm();
+        let m = m.to_f64_unchecked();
+        let log_cff = BigNum::from(m.log10());
+        let log_exp = BigNum::from(exp.1) * &BigNum::from(LOG10_2);
+        if exp.0 == 0 {
+            log_cff + &log_exp
+        } else {
+            log_cff - &log_exp
+        }
     }
     pub fn pow(&self, exp: &BigNum) -> Self {
         if !self.is_finite_number() {
             return Self::nan();
         }
         (exp * &self.log2()).exp2()
-    }
-    pub fn trunc(&self) -> Self {
-        let mut ret = self.clone();
-        ret.cff.bits >>= ret.exp;
-        ret.exp = 0;
-        ret
     }
     fn sin_or_cos(&self, coeff: &[f64], trans: bool) -> Self {
         let half_pi = Self::from(std::f64::consts::PI);
@@ -829,6 +848,16 @@ mod test {
     use super::*;
 
     #[test]
+    fn fract() {
+        let a = 0.5_f64;
+        let b = 1.234_f64;
+        let c = 12345.6789_f64;
+        assert_eq!(BigNum::from(a).fract(), BigNum::from(a.fract()));
+        assert_eq!(BigNum::from(b).fract(), BigNum::from(b.fract()));
+        assert_eq!(BigNum::from(c).fract(), BigNum::from(c.fract()));
+    }
+
+    #[test]
     fn to_f64_unchecked() {
         fn check_eq(lhs: f64, rhs: f64) {
             const EPS: f64 = 1e-15;
@@ -870,7 +899,7 @@ mod test {
 
     #[test]
     fn exp() {
-        let eps = BigNum::from(1e-13_f64);
+        let eps = BigNum::from(1e-14_f64);
 
         let a = BigNum::from(2);
         assert!((&a.exp() - &BigNum::from(2_f64.exp())).abs() < eps);
@@ -897,7 +926,7 @@ mod test {
 
     #[test]
     fn log2() {
-        let eps = BigNum::from(1e-13_f64);
+        let eps = BigNum::from(1e-14_f64);
 
         let a = BigNum::from(2);
         assert!((&a.log2() - &BigNum::from(2_f64.log2())).abs() < eps);
@@ -909,7 +938,7 @@ mod test {
 
     #[test]
     fn log10() {
-        let eps = BigNum::from(1e-13_f64);
+        let eps = BigNum::from(1e-14_f64);
 
         let a = BigNum::from(2);
         assert!((&a.log10() - &BigNum::from(2_f64.log10())).abs() < eps);
@@ -921,7 +950,7 @@ mod test {
 
     #[test]
     fn pow() {
-        let eps = BigNum::from(1e-13_f64);
+        let eps = BigNum::from(1e-15_f64);
 
         let a_base = BigNum::from(2);
         let a_exp = BigNum::from(5.283);
