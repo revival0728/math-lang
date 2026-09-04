@@ -56,6 +56,11 @@ impl BigNum {
 
 /// math functions
 impl BigNum {
+    pub fn rem_euclid(&self, _rhs: &Self) -> Self {
+        unreachable!(
+            "Blank implementation: BigNum itself cannot perform Rem, but needed in Var while compiling, which will never be executes"
+        )
+    }
     fn ilog2(&self) -> Self {
         let mut lg = Self::new();
         lg.cff.bits.set(0);

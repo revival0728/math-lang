@@ -127,7 +127,6 @@ impl_from_for_var!(BigNum, BigNum);
 impl Into<i32> for &Var {
     fn into(self) -> i32 {
         match self.type_ {
-            VarType::BigNum => panic!("need BigNum implementation"),
             VarType::None => panic!("runtime internal error!"),
             VarType::I32 => i32::from_le_bytes(self.data[0..4].try_into().unwrap()).into(),
             _ => panic!("runtime internal error!"),
@@ -138,7 +137,6 @@ impl Into<i32> for &Var {
 impl Into<i64> for &Var {
     fn into(self) -> i64 {
         match self.type_ {
-            VarType::BigNum => panic!("need BigNum implementation"),
             VarType::None => panic!("runtime internal error!"),
             VarType::I32 => i32::from_le_bytes(self.data[0..4].try_into().unwrap()).into(),
             VarType::I64 => i64::from_le_bytes(self.data[0..8].try_into().unwrap()).into(),
@@ -147,15 +145,34 @@ impl Into<i64> for &Var {
     }
 }
 
-// FIXME: i64 to f64 may cause overflow, change to BigNum instead
 impl Into<f64> for &Var {
     fn into(self) -> f64 {
         match self.type_ {
-            VarType::BigNum => panic!("need BigNum implementation"),
             VarType::None => panic!("runtime internal error!"),
             VarType::I32 => i32::from_le_bytes(self.data[0..4].try_into().unwrap()).into(),
-            VarType::I64 => i64::from_le_bytes(self.data[0..8].try_into().unwrap()) as f64,
+            VarType::I64 => {
+                let int = i64::from_le_bytes(self.data[0..8].try_into().unwrap());
+                const MAX_EXACT: i64 = (1 << f64::MANTISSA_DIGITS) - 1;
+                const MIN_EXACT: i64 = -MAX_EXACT;
+                if int > MAX_EXACT || int < MIN_EXACT {
+                    panic!("runtime internal error!");
+                }
+                int as f64
+            }
             VarType::F64 => f64::from_le_bytes(self.data[0..8].try_into().unwrap()).into(),
+            VarType::BigNum | VarType::Sequence => panic!("runtime internal error!"),
+        }
+    }
+}
+
+impl Into<BigNum> for &Var {
+    fn into(self) -> BigNum {
+        match self.type_ {
+            VarType::None => panic!("runtime internal error!"),
+            VarType::I32 => BigNum::from(i32::from_le_bytes(self.data[0..4].try_into().unwrap())),
+            VarType::I64 => BigNum::from(i64::from_le_bytes(self.data[0..8].try_into().unwrap())),
+            VarType::F64 => BigNum::from(f64::from_le_bytes(self.data[0..8].try_into().unwrap())),
+            VarType::BigNum => BigNum::from_le_bytes(&self.data),
             VarType::Sequence => panic!("runtime internal error!"),
         }
     }
@@ -229,13 +246,28 @@ macro_rules! impl_operation_for_var {
                     }};
                 }
                 match std::cmp::max(VarType::$min_type, std::cmp::max(self.type_, rhs.type_)) {
-                    VarType::None | VarType::BigNum | VarType::Sequence => panic!("runtime internal error!"),
+                    VarType::None | VarType::Sequence => panic!("runtime internal error!"),
                     VarType::I32 => impl_integer!(i32, i64),
-                    VarType::I64 => impl_integer!(i64, f64),
+                    VarType::I64 => {
+                        let l: i64 = self.into();
+                        let r: i64 = rhs.into();
+                        if let Some(v) = l.$checked_fn(r) {
+                            Var::from(v)
+                        } else {
+                            let l: BigNum = self.into();
+                            let r: BigNum = rhs.into();
+                            Var::from(l.$uncheck_fn(&r))
+                        }
+                    },
                     VarType::F64 => {
                         let l: f64 = self.into();
                         let r: f64 = rhs.into();
                         Var::from(l.$uncheck_fn(r))
+                    }
+                    VarType::BigNum => {
+                        let l: BigNum = self.into();
+                        let r: BigNum = rhs.into();
+                        Var::from(l.$uncheck_fn(&r))
                     }
                 }
             }
@@ -274,17 +306,18 @@ impl Neg for &Var {
             VarType::I32 => impl_for_integer!(i32, i64),
             VarType::I64 => impl_for_integer!(i64, f64),
             VarType::F64 => impl_for_float!(f64),
-            VarType::BigNum => panic!("missing BigNum implementation"),
+            VarType::BigNum => {
+                let v: BigNum = self.into();
+                Var::from(-&v)
+            }
             VarType::Sequence => panic!("runtime internal error!"),
         }
     }
 }
 
-// TODO: implement BigNum display
 impl Display for Var {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.type_ {
-            VarType::BigNum => panic!("runtime internal error!"),
             VarType::None => {
                 if self.data.is_empty() {
                     write!(f, "")
@@ -314,6 +347,14 @@ impl Display for Var {
                 unsafe {
                     let p = PRECISION as usize;
                     write!(f, "{:.p$}", v)
+                }
+            }
+            VarType::BigNum => {
+                let v: BigNum = self.into();
+                // SAFE: no multiple threads
+                unsafe {
+                    let p = PRECISION as usize;
+                    write!(f, "{}", v.to_float_str(p as u8))
                 }
             }
             VarType::Sequence => {
