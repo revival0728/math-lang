@@ -55,7 +55,7 @@ impl BigNum {
 
 /// math functions
 impl BigNum {
-    fn log2i(&self) -> Self {
+    fn ilog2(&self) -> Self {
         let mut lg = Self::new();
         lg.cff.bits.set(0);
         lg.cff.bits <<= self.cff.bit_count();
@@ -74,7 +74,7 @@ impl BigNum {
         if !self.is_finite_number() || self.sgn == 1 {
             return Self::nan();
         }
-        let mut n = self.log2i();
+        let mut n = self.ilog2();
         let two_reci = Self::from(0.5);
         for _ in 0..self.cff.bit_count() + 15 {
             n = &two_reci * &(&n + &(self / &n));
@@ -182,6 +182,76 @@ impl BigNum {
         }
         (exp * &self.log2()).exp2()
     }
+    pub fn trunc(&self) -> Self {
+        let mut ret = self.clone();
+        ret.cff.bits >>= ret.exp;
+        ret.exp = 0;
+        ret
+    }
+    fn sin_or_cos(&self, coeff: &[f64], trans: bool) -> Self {
+        let half_pi = Self::from(std::f64::consts::PI);
+        let k = (self / &half_pi).trunc();
+        let mut r = self - &(&half_pi * &k);
+        let r_squ = &r * &r;
+        if trans {
+            r = BigNum::from(1);
+        }
+        let mut trig = Self::new();
+        for &c in coeff.iter() {
+            let c = Self::from(c);
+            trig += &(&r * &c);
+            r *= &r_squ;
+        }
+        if k.cff.bits.get(0) == 1 {
+            trig.sgn = 1;
+        }
+        trig
+    }
+    pub fn sin(&self) -> Self {
+        const fn coeff<const N: usize>() -> [f64; N] {
+            let mut c = [1_f64; N];
+            let mut idx = 1;
+            while idx < N {
+                let i = idx + 1;
+                c[idx] = c[idx - 1] * ((2 * i - 1) * (2 * i - 2)) as f64;
+                idx += 1;
+            }
+            idx = 0;
+            while idx < N {
+                c[idx] = 1.0 / c[idx];
+                if idx & 1 == 1 {
+                    c[idx] = -c[idx];
+                }
+                idx += 1;
+            }
+            c
+        }
+        self.sin_or_cos(&coeff::<10>(), false)
+    }
+    pub fn cos(&self) -> Self {
+        const fn coeff<const N: usize>() -> [f64; N] {
+            let mut c = [1_f64; N];
+            let mut idx = 1;
+            while idx < N {
+                let i = idx;
+                c[idx] = c[idx - 1] * ((2 * i - 1) * (2 * i)) as f64;
+                idx += 1;
+            }
+            idx = 0;
+            while idx < N {
+                c[idx] = 1.0 / c[idx];
+                if idx & 1 == 1 {
+                    c[idx] = -c[idx];
+                }
+                idx += 1;
+            }
+            c
+        }
+        self.sin_or_cos(&coeff::<11>(), true)
+    }
+    pub fn tan(&self) -> Self {
+        self.sin() / &self.cos()
+    }
 }
 
 macro_rules! impl_from_uint {
@@ -259,11 +329,15 @@ macro_rules! impl_from_float {
                         .trunc()
                         .to_int_unchecked::<u64>()
                 };
-                let p10 = (10_u64).pow(PRECISION as u32);
+                let p10 = if PRECISION > 15 {
+                    BigNum::from((10_u64).pow((PRECISION - 15_u8) as u32))
+                        * &BigNum::from((10_u64).pow(15_u8 as u32))
+                } else {
+                    BigNum::from((10_u64).pow(PRECISION as u32))
+                };
 
                 let int = BigNum::from(int);
                 let dec = BigNum::from(dec);
-                let p10 = BigNum::from(p10);
                 let mut ret = int + &(&dec / &p10);
                 ret.sgn = sgn;
                 ret
@@ -272,7 +346,7 @@ macro_rules! impl_from_float {
     };
 }
 impl_from_float!(f32, 7);
-impl_from_float!(f64, 15);
+impl_from_float!(f64, 19);
 
 /// From scientific notation
 impl TryFrom<&str> for BigNum {
@@ -781,7 +855,7 @@ mod test {
         assert!((&c.ln() - &BigNum::from(std::f64::consts::E.ln())).abs() < eps);
         let large =
             BigNum::try_from("1123987230502758902374987198273981729472398582634672").unwrap();
-        assert_eq!(large.ln().to_float_str(15), "117.548722133340564");
+        assert_eq!(large.ln().to_float_str(15), "117.548722133340621");
     }
 
     #[test]
@@ -821,6 +895,79 @@ mod test {
     }
 
     #[test]
+    fn sin() {
+        use std::f64::consts::FRAC_PI_2;
+        use std::f64::consts::PI;
+        let eps = BigNum::from(1e-15_f64);
+
+        let a = BigNum::from(0_f64);
+        assert!((&a - &BigNum::from(0_f64.sin())).abs() < eps);
+        let b = BigNum::from(FRAC_PI_2);
+        assert!((&b.sin() - &BigNum::from(FRAC_PI_2.sin())).abs() < eps);
+        let c = BigNum::from(PI);
+        assert!((&c.sin() - &BigNum::from(PI.sin())).abs() < eps);
+        let d = BigNum::from(-1.234_f64);
+        assert!((&d.sin() - &BigNum::from((-1.234_f64).sin())).abs() < eps);
+        let e = BigNum::from(PI + PI);
+        assert!((&e.sin() - &BigNum::from((PI + PI).sin())).abs() < eps);
+        let g = BigNum::from(FRAC_PI_2 + PI);
+        assert!((&g.sin() - &BigNum::from((FRAC_PI_2 + PI).sin())).abs() < eps);
+
+        let eps_tor = BigNum::from(1e-10_f64);
+        let f = BigNum::from(-1234_f64);
+        assert!((&f.sin() - &BigNum::from((-1234_f64).sin())).abs() < eps_tor);
+    }
+
+    #[test]
+    fn cos() {
+        use std::f64::consts::FRAC_PI_2;
+        use std::f64::consts::PI;
+        let eps = BigNum::from(1e-15_f64);
+
+        let a = BigNum::from(0_f64);
+        assert!((&a.cos() - &BigNum::from(0_f64.cos())).abs() < eps);
+        let b = BigNum::from(FRAC_PI_2);
+        assert!((&b.cos() - &BigNum::from(FRAC_PI_2.cos())).abs() < eps);
+        let c = BigNum::from(PI);
+        assert!((&c.cos() - &BigNum::from(PI.cos())).abs() < eps);
+        let d = BigNum::from(-1.234_f64);
+        assert!((&d.cos() - &BigNum::from((-1.234_f64).cos())).abs() < eps);
+        let e = BigNum::from(PI + PI);
+        assert!((&e.cos() - &BigNum::from((PI + PI).cos())).abs() < eps);
+        let g = BigNum::from(FRAC_PI_2 + PI);
+        eprintln!("{}, {}", g.cos(), BigNum::from((FRAC_PI_2 + PI).cos()));
+        assert!((&g.cos() - &BigNum::from((FRAC_PI_2 + PI).cos())).abs() < eps);
+
+        let eps_tor = BigNum::from(1e-10_f64);
+        let f = BigNum::from(-1234_f64);
+        assert!((&f.cos() - &BigNum::from((-1234_f64).cos())).abs() < eps_tor);
+    }
+
+    #[test]
+    fn tan() {
+        use std::f64::consts::FRAC_PI_2;
+        use std::f64::consts::PI;
+        let eps = BigNum::from(1e-15_f64);
+
+        let a = BigNum::from(0_f64);
+        assert!((&a.tan() - &BigNum::from(0_f64.tan())).abs() < eps);
+        let b = BigNum::from(FRAC_PI_2);
+        assert!((&b.tan() - &BigNum::from(FRAC_PI_2.tan())).abs() < eps);
+        let c = BigNum::from(PI);
+        assert!((&c.tan() - &BigNum::from(PI.tan())).abs() < eps);
+        let d = BigNum::from(-1.234_f64);
+        assert!((&d.tan() - &BigNum::from((-1.234_f64).tan())).abs() < eps);
+        let e = BigNum::from(PI + PI);
+        assert!((&e.tan() - &BigNum::from((PI + PI).tan())).abs() < eps);
+        let g = BigNum::from(FRAC_PI_2 + PI);
+        assert!((&g.tan() - &BigNum::from((FRAC_PI_2 + PI).tan())).abs() < eps);
+
+        let eps_tor = BigNum::from(1e-10_f64);
+        let f = BigNum::from(-1234_f64);
+        assert!((&f.tan() - &BigNum::from((-1234_f64).tan())).abs() < eps_tor);
+    }
+
+    #[test]
     fn from_float_to_str() {
         let a = BigNum::from(1_u32);
         let b = BigNum::from(-1.234_f32);
@@ -829,7 +976,7 @@ mod test {
         assert_eq!(a.to_float_str(5), "1.00000");
         assert_eq!(b.to_float_str(5), "-1.23399");
         assert_eq!(c.to_float_str(7), "0.0012339");
-        assert_eq!(pi.to_float_str(15), "3.141592653589792");
+        assert_eq!(pi.to_float_str(15), "3.141592653589793");
     }
 
     #[test]
