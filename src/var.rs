@@ -1,3 +1,4 @@
+use crate::big_num::BigNum;
 use crate::env::PRECISION;
 use std::convert::{From, Into};
 use std::fmt::Display;
@@ -37,7 +38,9 @@ impl PartialEq for Var {
             VarType::I32 => primitive_eq!(i32),
             VarType::I64 => primitive_eq!(i64),
             VarType::F64 => primitive_eq!(f64),
-            VarType::BigNum => panic!("BigNum not implemented yet."),
+            VarType::BigNum => {
+                BigNum::from_le_bytes(&self.data) == BigNum::from_le_bytes(&other.data)
+            }
             VarType::Sequence => self.data == other.data,
         }
     }
@@ -87,7 +90,13 @@ impl<'input> Var {
         try_parse!(i32, I32, 4);
         try_parse!(i64, I64, 8);
         try_parse!(f64, F64, 8);
-        // TODO: implement BigNum
+        if let Ok(parsed) = BigNum::try_from(value) {
+            let bytes = parsed.to_le_bytes();
+            return Some(Self {
+                type_: VarType::BigNum,
+                data: bytes,
+            });
+        }
         None
     }
     pub fn write_data_unchecked(&mut self, data: &[u8]) {
@@ -113,6 +122,7 @@ macro_rules! impl_from_for_var {
 impl_from_for_var!(i32, I32);
 impl_from_for_var!(i64, I64);
 impl_from_for_var!(f64, F64);
+impl_from_for_var!(BigNum, BigNum);
 
 impl Into<i32> for &Var {
     fn into(self) -> i32 {

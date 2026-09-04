@@ -1,3 +1,4 @@
+use super::ubits::UintBits;
 use super::uint::BigUint;
 use std::cmp::{Eq, Ord, PartialEq, PartialOrd};
 use std::convert::{From, TryFrom};
@@ -307,6 +308,34 @@ impl BigNum {
         }
         let trigv = self.to_f64_unchecked();
         Self::from(trigv.atan())
+    }
+}
+
+impl BigNum {
+    /// | sgn | nan | inf | exp_0 | exp_1 | exp_2 | exp_3 | cff ... |
+    pub fn to_le_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(7 + (self.cff.bit_capacity() >> 3));
+        bytes.push(self.sgn);
+        bytes.push(self.nan as u8);
+        bytes.push((self.inf + 1) as u8);
+        bytes.extend(self.exp.to_le_bytes().into_iter());
+        bytes.extend(self.cff.bits.to_le_bytes().into_iter());
+        bytes
+    }
+    pub fn from_le_bytes(bytes: &[u8]) -> Self {
+        assert!(bytes.len() > 8);
+        let sgn = bytes[0];
+        let nan = if bytes[1] == 0 { false } else { true };
+        let inf = bytes[2] as i8 - 1;
+        let exp = u32::from_le_bytes(bytes[3..7].try_into().unwrap());
+        let cff = BigUint::from(UintBits::from_le_bytes(&bytes[7..]));
+        Self {
+            sgn,
+            nan,
+            inf,
+            exp,
+            cff,
+        }
     }
 }
 
@@ -1149,6 +1178,18 @@ mod test {
         assert!((&f.atan() - &BigNum::from(FRAC_PI_2)).abs() < eps);
         let g = BigNum::try_from("-1230479820364789216394862398164612386461237864").unwrap();
         assert!((&g.atan() - &BigNum::from(-FRAC_PI_2)).abs() < eps);
+    }
+
+    #[test]
+    fn from_to_le_bytes() {
+        let nan = BigNum::nan();
+        let inf = BigNum::inf();
+        let neg_inf = BigNum::neg_inf();
+        let pi = BigNum::from(std::f64::consts::PI);
+        assert_eq!(nan, BigNum::from_le_bytes(&nan.to_le_bytes()));
+        assert_eq!(inf, BigNum::from_le_bytes(&inf.to_le_bytes()));
+        assert_eq!(neg_inf, BigNum::from_le_bytes(&neg_inf.to_le_bytes()));
+        assert_eq!(pi, BigNum::from_le_bytes(&pi.to_le_bytes()));
     }
 
     #[test]
