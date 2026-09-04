@@ -140,7 +140,7 @@ impl BigNum {
     }
     /// scale cff part down to 1.xxx...
     /// return `(BigNum with same value, (shift exp sign, shift exp value))`
-    fn log_sdm(&self) -> (Self, (u8, u32)) {
+    fn log_sdn(&self) -> (Self, (u8, u32)) {
         let bl = self.cff.bits.bit_len() as u32;
         let exp = {
             if bl - 1 >= self.exp {
@@ -162,7 +162,7 @@ impl BigNum {
             return Self::nan();
         }
         use std::f64::consts::LN_2;
-        let (m, exp) = self.log_sdm();
+        let (m, exp) = self.log_sdn();
         let m = m.to_f64_unchecked();
         let log_cff = BigNum::from(m.ln());
         let log_exp = BigNum::from(exp.1) * &BigNum::from(LN_2);
@@ -176,7 +176,7 @@ impl BigNum {
         if !self.is_finite_number() || self.sgn == 1 {
             return Self::nan();
         }
-        let (m, exp) = self.log_sdm();
+        let (m, exp) = self.log_sdn();
         let m = m.to_f64_unchecked();
         let log_cff = BigNum::from(m.log2());
         let log_exp = BigNum::from(exp.1);
@@ -191,7 +191,7 @@ impl BigNum {
             return Self::nan();
         }
         use std::f64::consts::LOG10_2;
-        let (m, exp) = self.log_sdm();
+        let (m, exp) = self.log_sdn();
         let m = m.to_f64_unchecked();
         let log_cff = BigNum::from(m.log10());
         let log_exp = BigNum::from(exp.1) * &BigNum::from(LOG10_2);
@@ -207,69 +207,34 @@ impl BigNum {
         }
         (exp * &self.log2()).exp2()
     }
-    fn sin_or_cos(&self, coeff: &[f64], trans: bool) -> Self {
-        let half_pi = Self::from(std::f64::consts::PI);
-        let k = (self / &half_pi).trunc();
-        let mut r = self - &(&half_pi * &k);
-        let r_squ = &r * &r;
-        if trans {
-            r = BigNum::from(1);
-        }
-        let mut trig = Self::new();
-        for &c in coeff.iter() {
-            let c = Self::from(c);
-            trig += &(&r * &c);
-            r *= &r_squ;
-        }
-        if k.cff.bits.get(0) == 1 {
-            trig.sgn = 1;
-        }
-        trig
+    /// scale down self into range `[0, 2*PI)`
+    fn trig_sdn(&self) -> Self {
+        use std::f64::consts::PI;
+        let two_pi = BigNum::from(PI + PI);
+        let k = (self / &two_pi).trunc();
+        let r = self - &(&k * &two_pi);
+        r
     }
     pub fn sin(&self) -> Self {
-        const fn coeff<const N: usize>() -> [f64; N] {
-            let mut c = [1_f64; N];
-            let mut idx = 1;
-            while idx < N {
-                let i = idx + 1;
-                c[idx] = c[idx - 1] * ((2 * i - 1) * (2 * i - 2)) as f64;
-                idx += 1;
-            }
-            idx = 0;
-            while idx < N {
-                c[idx] = 1.0 / c[idx];
-                if idx & 1 == 1 {
-                    c[idx] = -c[idx];
-                }
-                idx += 1;
-            }
-            c
+        if !self.is_finite_number() {
+            return Self::nan();
         }
-        self.sin_or_cos(&coeff::<10>(), false)
+        let theta = self.trig_sdn().to_f64_unchecked();
+        BigNum::from(theta.sin())
     }
     pub fn cos(&self) -> Self {
-        const fn coeff<const N: usize>() -> [f64; N] {
-            let mut c = [1_f64; N];
-            let mut idx = 1;
-            while idx < N {
-                let i = idx;
-                c[idx] = c[idx - 1] * ((2 * i - 1) * (2 * i)) as f64;
-                idx += 1;
-            }
-            idx = 0;
-            while idx < N {
-                c[idx] = 1.0 / c[idx];
-                if idx & 1 == 1 {
-                    c[idx] = -c[idx];
-                }
-                idx += 1;
-            }
-            c
+        if !self.is_finite_number() {
+            return Self::nan();
         }
-        self.sin_or_cos(&coeff::<11>(), true)
+        let theta = self.trig_sdn().to_f64_unchecked();
+        BigNum::from(theta.cos())
     }
     pub fn tan(&self) -> Self {
-        self.sin() / &self.cos()
+        if !self.is_finite_number() {
+            return Self::nan();
+        }
+        let theta = self.trig_sdn().to_f64_unchecked();
+        BigNum::from(theta.tan())
     }
 }
 
@@ -979,7 +944,7 @@ mod test {
         let g = BigNum::from(FRAC_PI_2 + PI);
         assert!((&g.sin() - &BigNum::from((FRAC_PI_2 + PI).sin())).abs() < eps);
 
-        let eps_tor = BigNum::from(1e-10_f64);
+        let eps_tor = BigNum::from(1e-13_f64);
         let f = BigNum::from(-1234_f64);
         assert!((&f.sin() - &BigNum::from((-1234_f64).sin())).abs() < eps_tor);
     }
@@ -1004,7 +969,7 @@ mod test {
         eprintln!("{}, {}", g.cos(), BigNum::from((FRAC_PI_2 + PI).cos()));
         assert!((&g.cos() - &BigNum::from((FRAC_PI_2 + PI).cos())).abs() < eps);
 
-        let eps_tor = BigNum::from(1e-10_f64);
+        let eps_tor = BigNum::from(1e-13_f64);
         let f = BigNum::from(-1234_f64);
         assert!((&f.cos() - &BigNum::from((-1234_f64).cos())).abs() < eps_tor);
     }
@@ -1028,7 +993,7 @@ mod test {
         let g = BigNum::from(FRAC_PI_2 + PI);
         assert!((&g.tan() - &BigNum::from((FRAC_PI_2 + PI).tan())).abs() < eps);
 
-        let eps_tor = BigNum::from(1e-10_f64);
+        let eps_tor = BigNum::from(1e-13_f64);
         let f = BigNum::from(-1234_f64);
         assert!((&f.tan() - &BigNum::from((-1234_f64).tan())).abs() < eps_tor);
     }
