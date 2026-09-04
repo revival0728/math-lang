@@ -1,7 +1,7 @@
 use super::ubits::UintBits;
 use super::uint::BigUint;
 use std::cmp::{Eq, Ord, PartialEq, PartialOrd};
-use std::convert::{From, TryFrom};
+use std::convert::{From, TryFrom, TryInto};
 use std::fmt::{Debug, Display};
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
@@ -56,10 +56,10 @@ impl BigNum {
 
 /// math functions
 impl BigNum {
-    pub fn rem_euclid(&self, _rhs: &Self) -> Self {
-        unreachable!(
-            "Blank implementation: BigNum itself cannot perform Rem, but needed in Var while compiling, which will never be executes"
-        )
+    pub fn rem_euclid(&self, rhs: &Self) -> Self {
+        let n = (self / rhs).floor();
+        let r = self - &(&n * rhs);
+        r
     }
     fn ilog2(&self) -> Self {
         let mut lg = Self::new();
@@ -94,7 +94,11 @@ impl BigNum {
         }
     }
     pub fn floor(&self) -> Self {
-        self.trunc()
+        if self.sgn == 0 || self.fract().cff.is_zero() {
+            self.trunc()
+        } else {
+            self.trunc() - &BigNum::from(1)
+        }
     }
     pub fn round(&self) -> Self {
         let mut dec = self.fract();
@@ -238,6 +242,10 @@ impl BigNum {
         } else {
             log_cff - &log_exp
         }
+    }
+    /// redirect to log10 for math-lang builtin
+    pub fn log(&self, _base: f64) -> Self {
+        self.log10()
     }
     pub fn pow(&self, exp: &BigNum) -> Self {
         if !self.is_finite_number() {
@@ -510,8 +518,7 @@ impl TryFrom<&str> for BigNum {
                 base *= &base.clone();
                 exp >>= 1;
             }
-            let mut dec = BigNum::from(dec.0)
-                .div_with_precision(&BigNum::from(p10), (dec.1 + 15).min(u8::MAX as usize) as u8);
+            let mut dec = BigNum::from(dec.0).div_with_precision(&BigNum::from(p10), u8::MAX);
             dec.sgn = sgn;
             dec
         };
@@ -538,7 +545,9 @@ impl TryFrom<&str> for BigNum {
                 BigNum::from(one).div_with_precision(&BigNum::from(pow), prec)
             }
         };
-        Ok((&int + &dec) * &exp10)
+        let mut res = (&int + &dec) * &exp10;
+        res.trunc_with_precision(180);
+        Ok(res)
     }
 }
 
@@ -546,6 +555,26 @@ impl TryFrom<String> for BigNum {
     type Error = ();
     fn try_from(value: String) -> Result<Self, Self::Error> {
         Self::try_from(value.as_str())
+    }
+}
+
+impl TryInto<i32> for BigNum {
+    type Error = BigNum;
+    fn try_into(self) -> Result<i32, Self::Error> {
+        if !self.is_finite_number() {
+            return Err(self);
+        }
+        let max = Self::from(i32::MAX);
+        let min = Self::from(i32::MIN);
+        if self > max || self < min {
+            return Err(self);
+        }
+        let mut bytes = self.cff.bits.to_le_bytes();
+        while bytes.len() < 4 {
+            bytes.push(0);
+        }
+        let i = i32::from_le_bytes(bytes[0..4].try_into().unwrap());
+        Ok(if self.sgn == 0 { i } else { -i })
     }
 }
 
@@ -598,7 +627,11 @@ impl BigNum {
             let pow2 = BigUint::pow2(self.exp);
             let (int, dec) = self.cff.div_rem(&pow2);
             let dec = dec.div_decimal(&pow2, precision);
-            format!("{}{}.{}", if self.sgn == 1 { "-" } else { "" }, int, dec)
+            if precision == 0 {
+                format!("{}{}", if self.sgn == 1 { "-" } else { "" }, int)
+            } else {
+                format!("{}{}.{}", if self.sgn == 1 { "-" } else { "" }, int, dec)
+            }
         }
     }
 }
@@ -694,6 +727,12 @@ impl BigNum {
     }
     pub fn is_finite_number(&self) -> bool {
         !self.nan && self.inf == 0
+    }
+    pub fn is_integer(&self) -> bool {
+        self.is_finite_number() && self.exp == 0
+    }
+    pub fn is_zero(&self) -> bool {
+        self.is_integer() && self.cff.is_zero()
     }
     pub fn trunc_with_precision(&mut self, base2: u32) {
         let trunc = std::cmp::min(self.exp, base2);
@@ -960,6 +999,15 @@ mod test {
         check_eq(BigNum::from(b).to_f64_unchecked(), b);
         check_eq(BigNum::from(c).to_f64_unchecked(), c);
         check_eq(BigNum::from(PI).to_f64_unchecked(), PI);
+    }
+
+    #[test]
+    fn rem_euclid() {
+        let neg_five = BigNum::from(-5);
+        let five = BigNum::from(5);
+        let two = BigNum::from(2);
+        assert_eq!(five.rem_euclid(&two), BigNum::from(1));
+        assert_eq!(neg_five.rem_euclid(&two), BigNum::from(1));
     }
 
     #[test]
@@ -1235,6 +1283,13 @@ mod test {
 
         let full = BigNum::try_from("-1.234E+3").unwrap();
         assert!((&full - &BigNum::from(-1.234E+3_f64)).abs() < eps);
+
+        let long_str =
+            "100000000000000000000000000000000000000000000000000000000000000000000000000000000";
+        assert_eq!(
+            BigNum::try_from(long_str).unwrap().to_float_str(0),
+            long_str
+        );
     }
 
     #[test]

@@ -1,4 +1,5 @@
 #![allow(unused)]
+use crate::big_num::BigNum;
 use crate::env::*;
 use crate::export;
 use crate::rmapi::*;
@@ -13,11 +14,20 @@ pub mod math {
     macro_rules! declare_math_fn {
         ($name:ident $(, $arg:expr)?) => {
             pub fn $name(sapi: ScopeApi) -> RMFunRetType {
-                let x: f64 =
-                    sapi.get_current_var("x").unwrap().try_into().map_err(|t| {
-                        format!("expect argument of {}(x) to be a number but got {}", stringify!($name), t)
-                    })?;
-                Ok(Some(VarApi::from(x.$name($($arg)?))))
+                let x = sapi.get_current_var("x").unwrap();
+                if x.vtype() <= RMApiType::F64 {
+                    let x: f64 =
+                        x.try_into().map_err(|t| {
+                            format!("expect argument of {}(x) to be a number but got {}", stringify!($name), t)
+                        })?;
+                    Ok(Some(VarApi::from(x.$name($($arg)?))))
+                } else {
+                    let x: BigNum =
+                        x.try_into().map_err(|t| {
+                            format!("expect argument of {}(x) to be a number but got {}", stringify!($name), t)
+                        })?;
+                    Ok(Some(VarApi::from(x.$name($($arg)?))))
+                }
             }
         };
     }
@@ -83,14 +93,33 @@ pub mod logic {
     macro_rules! declare_logic_fn {
         ($name:ident, x $logic:tt $value:literal) => {
             pub fn $name(sapi: ScopeApi) -> RMFunRetType {
-                let x: i64 = sapi.get_current_var("x").unwrap().try_into().map_err(|t| {
-                    format!(
-                        "expect argument of {}(x) to be a integer got {}",
-                        stringify!($name),
-                        t
-                    )
-                })?;
-                Ok(Some(VarApi::from((x $logic $value) as i32)))
+                let x = sapi.get_current_var("x").unwrap();
+                if x.vtype() <= RMApiType::I64 {
+                    let x: i64 = x.try_into().map_err(|t| {
+                        format!(
+                            "expect argument of {}(x) to be a integer got {}",
+                            stringify!($name),
+                            t
+                        )
+                    })?;
+                    Ok(Some(VarApi::from((x $logic $value) as i32)))
+                } else {
+                    let x: BigNum = x.try_into().map_err(|t| {
+                        format!(
+                            "expect argument of {}(x) to be a integer got {}",
+                            stringify!($name),
+                            t
+                        )
+                    })?;
+                    if !x.is_integer() {
+                        return Err(
+                        format!(
+                            "expect argument of {}(x) to be a integer got BigNum::Float",
+                            stringify!($name),
+                        ))
+                    }
+                    Ok(Some(VarApi::from((x.is_zero()) as i32)))
+                }
             }
         };
     }
@@ -126,19 +155,18 @@ pub mod special {
 pub mod mtype {
     use super::*;
     pub fn int32(sapi: ScopeApi) -> RMFunRetType {
-        // TODO: change to BigNum when avaliable
-        let x: f64 = sapi
+        let x: BigNum = sapi
             .get_current_var("x")
             .unwrap()
             .try_into()
             .map_err(|t| format!("expect argument of int32(x) to be a number but got {}", t))?;
-        let trunc = x.trunc();
-        let xi32 = x as i32;
-        if trunc == f64::from(xi32) {
-            Ok(Some(VarApi::from(xi32)))
-        } else {
-            Err(format!("cannot convert {} to I32", x))
+        if !x.is_integer() {
+            return Err(format!("cannot convert {} to I32", x));
         }
+        let xi32: i32 = x
+            .try_into()
+            .map_err(|v| format!("cannot covert {} to I32", v))?;
+        Ok(Some(VarApi::from(xi32)))
     }
     pub fn typef(sapi: ScopeApi) -> RMFunRetType {
         let x = sapi.get_current_var("x").unwrap();

@@ -89,8 +89,20 @@ impl<'input> Var {
         }
         try_parse!(i32, I32, 4);
         try_parse!(i64, I64, 8);
-        try_parse!(f64, F64, 8);
         if let Ok(parsed) = BigNum::try_from(value) {
+            const MAX_EXACT: i64 = (1 << f64::MANTISSA_DIGITS) - 1;
+            const MIN_EXACT: i64 = -MAX_EXACT;
+            let max_exact = BigNum::from(MAX_EXACT);
+            let min_exact = BigNum::from(MIN_EXACT);
+            if min_exact <= parsed && parsed <= max_exact {
+                let f = parsed.to_f64_unchecked();
+                let bytes = f.to_le_bytes();
+                let data = Vec::from(bytes);
+                return Some(Self {
+                    type_: VarType::F64,
+                    data,
+                });
+            }
             let bytes = parsed.to_le_bytes();
             return Some(Self {
                 type_: VarType::BigNum,

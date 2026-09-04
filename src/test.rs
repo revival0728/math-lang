@@ -29,6 +29,9 @@ pub mod examples {
     pub fn cur_operator() -> String {
         get("cur-operator.mls")
     }
+    pub fn big_num() -> String {
+        get("big-num.mls")
+    }
 }
 
 #[cfg(test)]

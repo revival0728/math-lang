@@ -74,6 +74,7 @@
 //! ## NOTICE
 //! - The file extension of dynamic library could be arbitary, but highly recommends that `windows` uses `.dll`, `linux` uses `.so` and `macos` uses `.dylib`
 //! - The rust library module should be compiled with the same Rust compiler version as math-lang binary
+use crate::big_num::BigNum;
 use crate::runtime::{Fun, Scope};
 use crate::var::{Var, VarType};
 use std::cell::RefCell;
@@ -488,6 +489,7 @@ macro_rules! impl_var_api_try_into {
 impl_var_api_try_into!(i32, I32);
 impl_var_api_try_into!(i64, I64);
 impl_var_api_try_into!(f64, F64);
+impl_var_api_try_into!(BigNum, BigNum);
 
 macro_rules! impl_var_api_try_into_other {
     ($from:tt, $to:tt) => {
@@ -521,6 +523,7 @@ macro_rules! impl_var_api_from {
 impl_var_api_from!(i32);
 impl_var_api_from!(i64);
 impl_var_api_from!(f64);
+impl_var_api_from!(BigNum);
 
 macro_rules! impl_var_api_from_other {
     ($from:tt, $to:tt) => {
