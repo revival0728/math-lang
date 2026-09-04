@@ -220,21 +220,61 @@ impl BigNum {
             return Self::nan();
         }
         let theta = self.trig_sdn().to_f64_unchecked();
-        BigNum::from(theta.sin())
+        Self::from(theta.sin())
     }
     pub fn cos(&self) -> Self {
         if !self.is_finite_number() {
             return Self::nan();
         }
         let theta = self.trig_sdn().to_f64_unchecked();
-        BigNum::from(theta.cos())
+        Self::from(theta.cos())
     }
     pub fn tan(&self) -> Self {
         if !self.is_finite_number() {
             return Self::nan();
         }
         let theta = self.trig_sdn().to_f64_unchecked();
-        BigNum::from(theta.tan())
+        Self::from(theta.tan())
+    }
+    pub fn asin(&self) -> Self {
+        if !self.is_finite_number() {
+            return Self::nan();
+        }
+        let one = BigNum::from(1);
+        let neg_one = BigNum::from(-1);
+        if self > &one || self < &neg_one {
+            return Self::nan();
+        }
+        let trigv = self.to_f64_unchecked();
+        Self::from(trigv.asin())
+    }
+    pub fn acos(&self) -> Self {
+        if !self.is_finite_number() {
+            return Self::nan();
+        }
+        let one = BigNum::from(1);
+        let neg_one = BigNum::from(-1);
+        if self > &one || self < &neg_one {
+            return Self::nan();
+        }
+        let trigv = self.to_f64_unchecked();
+        Self::from(trigv.acos())
+    }
+    pub fn atan(&self) -> Self {
+        if !self.is_finite_number() {
+            return Self::nan();
+        }
+        use std::f64::consts::FRAC_PI_2;
+        let fmax = BigNum::from(i128::MAX - 1);
+        let fmin = BigNum::from(i128::MIN + 1);
+        if self > &fmax {
+            return Self::from(FRAC_PI_2);
+        }
+        if self < &fmin {
+            return Self::from(-FRAC_PI_2);
+        }
+        let trigv = self.to_f64_unchecked();
+        Self::from(trigv.atan())
     }
 }
 
@@ -540,12 +580,30 @@ impl Ord for BigNum {
             Greater => Less,
             Equal => {
                 if self.exp == other.exp {
-                    return self.cff.cmp(&other.cff);
+                    let cmp = self.cff.cmp(&other.cff);
+                    return if self.sgn == 0 {
+                        cmp
+                    } else {
+                        match cmp {
+                            Less => Greater,
+                            Greater => Less,
+                            Equal => Equal,
+                        }
+                    };
                 }
                 let mut s = self.clone();
                 let mut o = other.clone();
                 Self::align_exp(&mut s, &mut o);
-                s.cff.cmp(&o.cff)
+                let cmp = s.cff.cmp(&o.cff);
+                if self.sgn == 0 {
+                    cmp
+                } else {
+                    match cmp {
+                        Less => Greater,
+                        Greater => Less,
+                        Equal => Equal,
+                    }
+                }
             }
         }
     }
@@ -999,6 +1057,56 @@ mod test {
     }
 
     #[test]
+    fn asin() {
+        let eps = BigNum::from(1e-15_f64);
+
+        let a = BigNum::from(0_f64);
+        assert!((&a.asin() - &BigNum::from(0_f64.asin())).abs() < eps);
+        let b = BigNum::from(1_f64);
+        assert!((&b.asin() - &BigNum::from(1_f64.asin())).abs() < eps);
+        let c = BigNum::from(-1_f64);
+        assert!((&c.asin() - &BigNum::from((-1_f64).asin())).abs() < eps);
+    }
+
+    #[test]
+    fn acos() {
+        let eps = BigNum::from(1e-15_f64);
+
+        let a = BigNum::from(0_f64);
+        assert!((&a.acos() - &BigNum::from(0_f64.acos())).abs() < eps);
+        let b = BigNum::from(1_f64);
+        assert!((&b.acos() - &BigNum::from(1_f64.acos())).abs() < eps);
+        let c = BigNum::from(-1_f64);
+        assert!((&c.acos() - &BigNum::from((-1_f64).acos())).abs() < eps);
+    }
+
+    #[test]
+    fn atan() {
+        let eps = BigNum::from(1e-15_f64);
+
+        let a = BigNum::from(0_f64);
+        assert!((&a.atan() - &BigNum::from(0_f64.atan())).abs() < eps);
+        let b = BigNum::from(1_f64);
+        assert!((&b.atan() - &BigNum::from(1_f64.atan())).abs() < eps);
+        let c = BigNum::from(-1_f64);
+        assert!((&c.atan() - &BigNum::from((-1_f64).atan())).abs() < eps);
+        let d = BigNum::from(1234_f64);
+        assert!((&d.atan() - &BigNum::from((1234_f64).atan())).abs() < eps);
+        let e = BigNum::from(-1234_f64);
+        assert!((&e.atan() - &BigNum::from((-1234_f64).atan())).abs() < eps);
+        let i = BigNum::from(1e18_f64);
+        assert!((&i.atan() - &BigNum::from((1e18_f64).atan())).abs() < eps);
+        let j = BigNum::from(-1e18_f64);
+        assert!((&j.atan() - &BigNum::from((-1e18_f64).atan())).abs() < eps);
+
+        use std::f64::consts::FRAC_PI_2;
+        let f = BigNum::try_from("1230479820364789216394862398164612386461237864").unwrap();
+        assert!((&f.atan() - &BigNum::from(FRAC_PI_2)).abs() < eps);
+        let g = BigNum::try_from("-1230479820364789216394862398164612386461237864").unwrap();
+        assert!((&g.atan() - &BigNum::from(-FRAC_PI_2)).abs() < eps);
+    }
+
+    #[test]
     fn from_float_to_str() {
         let a = BigNum::from(1_u32);
         let b = BigNum::from(-1.234_f32);
@@ -1145,12 +1253,20 @@ mod test {
             inf: 0,
             nan: false,
         };
+        let e = BigNum {
+            sgn: 1,
+            cff: BigUint::from(1_u32),
+            exp: 0,
+            inf: 0,
+            nan: false,
+        };
         assert_eq!(a < b, true);
         assert_eq!(a > b, false);
         assert_eq!(a < c, false);
         assert_eq!(a > c, true);
         assert_eq!(a < d, false);
         assert_eq!(a > d, true);
+        assert_eq!(e > d, true);
 
         let pos_z = BigNum {
             sgn: 0,
