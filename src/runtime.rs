@@ -1,3 +1,4 @@
+use crate::big_num::BigNum;
 use crate::comiler::{Compiler, Expr, Inst};
 use crate::error::{GlobalError, RuntimeError};
 use crate::module;
@@ -809,7 +810,9 @@ where
                 let rhs = self.exec_expr(rhs, line)?;
                 check_none!(lhs, rhs);
                 check_is_num!(lhs, rhs);
-                if lhs.borrow().type_ <= VarType::I64 && rhs.borrow().type_ <= VarType::I64 {
+                let lhs_type = lhs.borrow().type_;
+                let rhs_type = rhs.borrow().type_;
+                if lhs_type <= VarType::I64 && rhs_type <= VarType::I64 {
                     let mut lhs = Rc::new(Var::clone(&lhs.borrow()));
                     let mut rhs: i64 = (&*rhs.borrow()).into();
                     let mut reci = false;
@@ -830,13 +833,17 @@ where
                         *Rc::get_mut(&mut lhs).unwrap() = &one / &lhs;
                     }
                     Ok(Rc::new(RefCell::new(ret)))
-                } else {
+                } else if lhs_type == VarType::F64 && rhs_type == VarType::F64 {
                     let lhs: f64 = (&*lhs.borrow()).into();
                     let rhs: f64 = (&*rhs.borrow()).into();
                     let val = lhs.powf(rhs);
                     Ok(Rc::new(RefCell::new(Var::from(val))))
+                } else {
+                    let lhs: BigNum = (&*lhs.borrow()).into();
+                    let rhs: BigNum = (&*rhs.borrow()).into();
+                    let val = lhs.pow(&rhs);
+                    Ok(Rc::new(RefCell::new(Var::from(val))))
                 }
-                //TODO: add BigNum implemntation
             }
             Inst::RustFnCall(id) => {
                 let sapi = ScopeApi::new(&mut self.builtin, &mut self.locals);
