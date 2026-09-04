@@ -80,6 +80,22 @@ impl BigNum {
         }
         ret
     }
+    pub fn ceil(&self) -> Self {
+        if self.fract().cff.is_zero() {
+            self.clone()
+        } else {
+            self.trunc() + &BigNum::from(1)
+        }
+    }
+    pub fn floor(&self) -> Self {
+        self.trunc()
+    }
+    pub fn round(&self) -> Self {
+        let mut dec = self.fract();
+        dec.trunc_with_precision(60);
+        let dec = dec.to_f64_unchecked();
+        self.trunc() + &BigNum::from(dec.round())
+    }
     pub fn abs(&self) -> Self {
         if !self.is_finite_number() {
             return Self::nan();
@@ -97,8 +113,24 @@ impl BigNum {
         let two_reci = Self::from(0.5);
         for _ in 0..self.cff.bit_count() + 15 {
             n = &two_reci * &(&n + &(self / &n));
+            n.trunc_with_precision(180);
         }
         n
+    }
+    pub fn cbrt(&self) -> Self {
+        if !self.is_finite_number() || self.sgn == 1 {
+            return Self::nan();
+        }
+        let two = BigNum::from(2);
+        let three = BigNum::from(3);
+        let mut y = &self.trunc() / &three;
+        let dbl_self = self * &two;
+        for _ in 0..self.cff.bit_count() + 5 {
+            let cube = &y * &y * &y;
+            y = &y * &(&(&cube + &dbl_self) / &(&two * &cube + self));
+            y.trunc_with_precision(180);
+        }
+        y
     }
     pub fn exp2(&self) -> Self {
         if !self.is_finite_number() {
@@ -906,6 +938,19 @@ mod test {
         assert!((&normal.sqrt() - &BigNum::from(12345_f64.sqrt())).abs() < eps);
         let large = BigNum::from(1e18_f64);
         assert!((&large.sqrt() - &BigNum::from(1e18_f64.sqrt())).abs() < eps);
+    }
+
+    #[test]
+    fn cbrt() {
+        let eps = BigNum::from(1e-14_f64);
+
+        let two = BigNum::from(2);
+        assert!((&two.cbrt() - &BigNum::from(2_f64.cbrt())).abs() < eps);
+        let normal = BigNum::from(12345);
+        assert!((&normal.cbrt() - &BigNum::from(12345_f64.cbrt())).abs() < eps);
+        let large = BigNum::from(1e18_f64);
+        eprintln!("{}, {}", large.cbrt(), BigNum::from(1e18_f64.cbrt()));
+        assert!((&large.cbrt() - &BigNum::from(1e18_f64.cbrt())).abs() < eps);
     }
 
     #[test]
