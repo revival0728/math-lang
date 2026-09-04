@@ -592,6 +592,27 @@ impl BigNum {
         self.cff.bits >>= self.exp - trunc;
         self.exp = trunc;
     }
+    pub fn to_f64_unchecked(&self) -> f64 {
+        if self.nan {
+            return f64::NAN;
+        }
+        if self.inf == 1 {
+            return f64::INFINITY;
+        }
+        if self.inf == -1 {
+            return f64::NEG_INFINITY;
+        }
+        let mut b2 = 2_f64.powi(-(self.exp as i32));
+        self.cff
+            .bits
+            .iter()
+            .fold(0_f64, |mut r, bit| {
+                r += b2 * bit as f64;
+                b2 *= 2.0;
+                return r;
+            })
+            .copysign(if self.sgn == 0 { 1.0 } else { -1.0 })
+    }
 }
 
 impl Neg for &BigNum {
@@ -808,6 +829,22 @@ mod test {
     use super::*;
 
     #[test]
+    fn to_f64_unchecked() {
+        fn check_eq(lhs: f64, rhs: f64) {
+            const EPS: f64 = 1e-15;
+            assert!((lhs - rhs).abs() < EPS);
+        }
+        use std::f64::consts::PI;
+        let a = 0.5_f64;
+        let b = 1.234_f64;
+        let c = 12345.6789_f64;
+        check_eq(BigNum::from(a).to_f64_unchecked(), a);
+        check_eq(BigNum::from(b).to_f64_unchecked(), b);
+        check_eq(BigNum::from(c).to_f64_unchecked(), c);
+        check_eq(BigNum::from(PI).to_f64_unchecked(), PI);
+    }
+
+    #[test]
     fn sqrt() {
         let eps = BigNum::from(1e-15_f64);
 
@@ -845,7 +882,7 @@ mod test {
 
     #[test]
     fn ln() {
-        let eps = BigNum::from(1e-13_f64);
+        let eps = BigNum::from(1e-15_f64);
 
         let a = BigNum::from(2);
         assert!((&a.ln() - &BigNum::from(2_f64.ln())).abs() < eps);
