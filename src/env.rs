@@ -4,6 +4,7 @@ pub static mut PRINT_SET_INST: u32 = 1;
 pub static mut DETAIL_DEPTH: u32 = 0;
 pub static mut MAX_STACK_DEPTH: u32 = 1024;
 pub static mut INDEX_BASE: u32 = 0;
+pub static mut CALC_PRECISION_IN_BIN: u32 = 180;
 
 pub fn is_env<'f>(name: &'f str) -> bool {
     name.starts_with("__") && name.ends_with("__")

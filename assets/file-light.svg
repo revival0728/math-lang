@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <linearGradient id="lightGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2563eb"/>
+      <stop offset="100%" stop-color="#7c3aed"/>
+    </linearGradient>
+  </defs>
+
+  <!-- 代表「流動表達式」的無窮大幾何雙環 -->
+  <path d="M 38 64 C 20 40, 10 88, 38 88 C 58 88, 70 40, 90 40 C 118 40, 108 88, 90 88 C 70 88, 58 40, 38 40 Z" 
+        fill="none" 
+        stroke="url(#lightGrad)" 
+        stroke-width="7" 
+        stroke-linecap="round" 
+        stroke-linejoin="round"/>
+
+  <!-- 符號點綴 (加號、等號) -->
+  <circle cx="38" cy="64" r="4" fill="#2563eb"/>
+  <circle cx="90" cy="64" r="4" fill="#7c3aed"/>
+
+  <!-- 簡潔底部文字 (me = math expression) -->
+  <text x="64" y="112" 
+        font-family="-apple-system, BlinkMacSystemFont, 'Fira Code', monospace" 
+        font-size="16" 
+        font-weight="800" 
+        fill="#1e293b" 
+        text-anchor="middle" 
+        letter-spacing="2">= expr</text>
+</svg>

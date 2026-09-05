@@ -74,6 +74,7 @@
 //! ## NOTICE
 //! - The file extension of dynamic library could be arbitary, but highly recommends that `windows` uses `.dll`, `linux` uses `.so` and `macos` uses `.dylib`
 //! - The rust library module should be compiled with the same Rust compiler version as math-lang binary
+pub use crate::big_num::BigNum as Real;
 use crate::runtime::{Fun, Scope};
 use crate::var::{Var, VarType};
 use std::cell::RefCell;
@@ -82,7 +83,7 @@ use std::rc::Rc;
 
 /// Quick import for Rust Module API
 pub mod prelude {
-    pub use super::{ModMember, Number, RMExport, RMFunRetType, ScopeApi, VarApi};
+    pub use super::{ModMember, Number, RMExport, RMFunRetType, Real, ScopeApi, VarApi};
     pub use crate::export;
 }
 
@@ -175,12 +176,11 @@ pub enum Number {
 }
 
 /// Rust Module API Type to interact with math-lang runtime
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Hash)]
 pub enum RMApiType {
     I32,
     I64,
-    F64,
-    BigNum,
+    Real,
     Sequence,
     ByteArray,
 }
@@ -290,7 +290,7 @@ impl<'runtime, 'call> ScopeApi<'runtime, 'call> {
     /// # use math_lang::prelude::*;
     /// pub fn example(sapi: ScopeApi) -> RMFunRetType {
     ///     let pi: VarApi = sapi.get_builtin_var("pi").unwrap();  // "pi" is builtin constant
-    ///     let pi: f64 = pi.try_into().unwrap();      // "pi" is f64 constant
+    ///     let pi: Real = pi.try_into().unwrap();      // "pi" is f64 constant
     ///     // ...
     ///     # Ok(None)
     /// }
@@ -402,8 +402,8 @@ impl VarApi {
             Number::I16(num) => *self.rref.borrow_mut() = Var::from(num as i32),
             Number::I32(num) => *self.rref.borrow_mut() = Var::from(num),
             Number::I64(num) => *self.rref.borrow_mut() = Var::from(num),
-            Number::F32(num) => *self.rref.borrow_mut() = Var::from(num as f64),
-            Number::F64(num) => *self.rref.borrow_mut() = Var::from(num),
+            Number::F32(num) => *self.rref.borrow_mut() = Var::from(Real::from(num)),
+            Number::F64(num) => *self.rref.borrow_mut() = Var::from(Real::from(num)),
         }
     }
     /// Get the [`RMApiType`] of variable.
@@ -411,11 +411,14 @@ impl VarApi {
         match self.rref.borrow().type_ {
             VarType::I32 => RMApiType::I32,
             VarType::I64 => RMApiType::I64,
-            VarType::F64 => RMApiType::F64,
-            VarType::BigNum => RMApiType::BigNum,
+            VarType::Real => RMApiType::Real,
             VarType::Sequence => RMApiType::Sequence,
             VarType::None => RMApiType::ByteArray,
         }
+    }
+    pub fn as_bytes(&self) -> std::cell::Ref<'_, [u8]> {
+        let vf = self.rref.borrow();
+        std::cell::Ref::map(vf, |v| v.as_raw_bytes())
     }
     /// Set variable with raw bytes.
     ///
@@ -471,7 +474,7 @@ macro_rules! impl_var_api_try_into {
             type Error = RMApiType;
             fn try_into(self) -> Result<$rtype, Self::Error> {
                 let vtype = self.vtype();
-                if vtype <= RMApiType::$vtype && vtype <= RMApiType::BigNum {
+                if vtype <= RMApiType::$vtype && vtype <= RMApiType::Real {
                     let v: $rtype = (&*self.rref.borrow()).into();
                     Ok(v)
                 } else {
@@ -483,7 +486,7 @@ macro_rules! impl_var_api_try_into {
 }
 impl_var_api_try_into!(i32, I32);
 impl_var_api_try_into!(i64, I64);
-impl_var_api_try_into!(f64, F64);
+impl_var_api_try_into!(Real, Real);
 
 macro_rules! impl_var_api_try_into_other {
     ($from:tt, $to:tt) => {
@@ -516,7 +519,14 @@ macro_rules! impl_var_api_from {
 }
 impl_var_api_from!(i32);
 impl_var_api_from!(i64);
-impl_var_api_from!(f64);
+impl_var_api_from!(Real);
+
+impl From<f64> for VarApi {
+    fn from(value: f64) -> Self {
+        let ref_var = Rc::new(RefCell::new(Var::from(Real::from(value))));
+        Self { rref: ref_var }
+    }
+}
 
 macro_rules! impl_var_api_from_other {
     ($from:tt, $to:tt) => {
@@ -544,6 +554,45 @@ impl From<&str> for VarApi {
     }
 }
 
+impl From<String> for VarApi {
+    fn from(value: String) -> Self {
+        let mut var = Var::default();
+        var.write_data_unchecked(value.as_bytes());
+        Self {
+            rref: Rc::new(RefCell::new(var)),
+        }
+    }
+}
+
+impl From<&[u8]> for VarApi {
+    fn from(value: &[u8]) -> Self {
+        let mut var = Var::default();
+        var.write_data_unchecked(value);
+        Self {
+            rref: Rc::new(RefCell::new(var)),
+        }
+    }
+}
+
+impl From<Vec<u8>> for VarApi {
+    fn from(value: Vec<u8>) -> Self {
+        let mut var = Var::default();
+        var.write_data_unchecked(&value.into_boxed_slice());
+        Self {
+            rref: Rc::new(RefCell::new(var)),
+        }
+    }
+}
+
+impl From<RMHeapInfo> for VarApi {
+    fn from(value: RMHeapInfo) -> Self {
+        let var = Var::new_sequence((value.mstart, value.mend), (value.sindex, value.sid));
+        Self {
+            rref: Rc::new(RefCell::new(var)),
+        }
+    }
+}
+
 impl TryInto<String> for VarApi {
     type Error = RMApiType;
     fn try_into(self) -> Result<String, Self::Error> {
@@ -562,15 +611,6 @@ impl TryInto<Vec<u8>> for VarApi {
             Ok(self.rref.borrow().as_raw_bytes().to_vec())
         } else {
             Err(self.vtype())
-        }
-    }
-}
-
-impl From<RMHeapInfo> for VarApi {
-    fn from(value: RMHeapInfo) -> Self {
-        let var = Var::new_sequence((value.mstart, value.mend), (value.sindex, value.sid));
-        Self {
-            rref: Rc::new(RefCell::new(var)),
         }
     }
 }
@@ -632,8 +672,7 @@ impl std::fmt::Display for RMApiType {
             match self {
                 RMApiType::I32 => "I32",
                 RMApiType::I64 => "I64",
-                RMApiType::F64 => "F64",
-                RMApiType::BigNum => "BigNum",
+                RMApiType::Real => "Real",
                 RMApiType::Sequence => "Sequence",
                 RMApiType::ByteArray => "ByteArray",
             }

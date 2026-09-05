@@ -54,17 +54,24 @@ For usage exmaple, checkout [examples/cur-operator.mls](/examples/cur-operator.m
 types are automatically determined, depends on precision and size of value
 
 ```text
-Sequence | BigNum > f64 > i64 > i32
+Sequence | Real > i64 > i32
 ```
 
-where `f64`, `i64`, `i32` are Rust primitve types, `BigNum` is used only when precision or size of value is required
+where `i64`, `i32` are Rust primitive types, `BigNum` is used only when precision or size of value is required
 
-`BigNum` is not implemented yet
+### About Real
+- `Real` stands for real number
+- you can use `Real` as Rust primitive `f64` type in math-lang
+- `Real` has no value limit, but has precision limit to prevent perfomance issue
+- **WARN**: raw numbers of `Real` have accuracy guarantee, but scientific notations are NOT
+
+> `Real` in math-lang source code is **struct** `BigNum`...
 
 ### Value Limit
-currently values are limited by Rust primitive type `f64`, will change after implementing `BigNum`
+There is NO value limit now, thanks to `Real`!
 
-which is in [-1.7976931348623157e+308, 1.7976931348623157e+308]
+### Precision Limit
+the `Real` type can stores at most 180 decimal binary bits, which means the precision in 10-base is about **54**
 
 ### About Sequence
 - just like array in other language
@@ -128,6 +135,7 @@ checkout [example](/examples/module.mls)
 | name | document |
 |------|----------|
 | int32(x) | `trunc(x)` function but guarantees return type is I32 or else gets RuntimeError |
+| type(x) | return type of argument `x` as literal string, compare and check with function `hash(x)` |
 
 ### Module Relative Functions
 
@@ -188,7 +196,13 @@ checkout [example](/examples/module.mls)
 | trunc(x) | `Rust` function, return integer part of the argument |
 | cbrt(x) | `Rust` function, return cube root of the argument |
 
-- using `f64::builtin(x)` for all Rust primitive types
+- using [`Real::builtin(x)`](../src/big_num/num.rs#L57) for all Rust primitive types
+
+### Utility Functions
+
+| name | document |
+|------|----------|
+| hash(x) | return hash value of argument `x` as type I64, guarantee that hash value from `type(x)` will not collide |
 
 ## About Environment Variable (ENV)
 it is possible to read or get ENV by function `__[ENV_name]__()`, where `[ENV_name]` only contains lower case alphabets
@@ -203,6 +217,7 @@ it is possible to read or get ENV by function `__[ENV_name]__()`, where `[ENV_na
 | DETAIL_DEPTH | the output level of detail information | repl=0, source=1 |[0, 1] |
 | MAX_STACK_DEPTH | the maximum stack depth of recrusive function | 512 |[0, inf] |
 | INDEX_BASE | the base of indexing | 0 | [0, 1] |
+| CALC_PRECISION_IN_BIN | the precision of binary digit while doing calculations | 180 | [0, 800] |
 
 - maximum stack size is not ENV, but can be configured by execution argument, by default is 64MB
 

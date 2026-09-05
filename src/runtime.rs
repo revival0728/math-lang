@@ -1,7 +1,7 @@
 use crate::comiler::{Compiler, Expr, Inst};
 use crate::error::{GlobalError, RuntimeError};
 use crate::module;
-use crate::rmapi::{ModMember, Number, RMExport, RMFunPtr, ScopeApi};
+use crate::rmapi::{ModMember, Number, RMExport, RMFunPtr, Real, ScopeApi};
 use crate::var::{Var, VarType};
 use crate::{builtin, env::*};
 use std::cell::RefCell;
@@ -297,8 +297,8 @@ where
                     Number::I16(num) => mod_scope.add_var(name, Var::from(num as i32)),
                     Number::I32(num) => mod_scope.add_var(name, Var::from(num)),
                     Number::I64(num) => mod_scope.add_var(name, Var::from(num)),
-                    Number::F32(num) => mod_scope.add_var(name, Var::from(num as f64)),
-                    Number::F64(num) => mod_scope.add_var(name, Var::from(num)),
+                    Number::F32(num) => mod_scope.add_var(name, Var::from(Real::from(num))),
+                    Number::F64(num) => mod_scope.add_var(name, Var::from(Real::from(num))),
                 },
                 ModMember::Fun((name, paras, rfn)) => {
                     let mut fun = Fun::new(paras.clone());
@@ -329,8 +329,8 @@ where
                     Number::I16(num) => self.builtin.add_var(name, Var::from(num as i32)),
                     Number::I32(num) => self.builtin.add_var(name, Var::from(num)),
                     Number::I64(num) => self.builtin.add_var(name, Var::from(num)),
-                    Number::F32(num) => self.builtin.add_var(name, Var::from(num as f64)),
-                    Number::F64(num) => self.builtin.add_var(name, Var::from(num)),
+                    Number::F32(num) => self.builtin.add_var(name, Var::from(Real::from(num))),
+                    Number::F64(num) => self.builtin.add_var(name, Var::from(Real::from(num))),
                 },
                 ModMember::Fun((name, paras, rfn)) => {
                     let mut fun = Fun::new(paras.clone());
@@ -644,7 +644,7 @@ where
                 check_is_num!(rhs);
                 let (scope_index, scope_id) = lhs.borrow().get_scope();
                 let (start, end) = lhs.borrow().get_boundary();
-                if rhs.borrow().type_ >= VarType::F64 {
+                if rhs.borrow().type_ >= VarType::Real {
                     return Err(RuntimeError {
                         line,
                         msg: format!("only integers can be used for indexing"),
@@ -809,7 +809,9 @@ where
                 let rhs = self.exec_expr(rhs, line)?;
                 check_none!(lhs, rhs);
                 check_is_num!(lhs, rhs);
-                if lhs.borrow().type_ <= VarType::I64 && rhs.borrow().type_ <= VarType::I64 {
+                let lhs_type = lhs.borrow().type_;
+                let rhs_type = rhs.borrow().type_;
+                if lhs_type <= VarType::I64 && rhs_type <= VarType::I64 {
                     let mut lhs = Rc::new(Var::clone(&lhs.borrow()));
                     let mut rhs: i64 = (&*rhs.borrow()).into();
                     let mut reci = false;
@@ -831,12 +833,11 @@ where
                     }
                     Ok(Rc::new(RefCell::new(ret)))
                 } else {
-                    let lhs: f64 = (&*lhs.borrow()).into();
-                    let rhs: f64 = (&*rhs.borrow()).into();
-                    let val = lhs.powf(rhs);
+                    let lhs: Real = (&*lhs.borrow()).into();
+                    let rhs: Real = (&*rhs.borrow()).into();
+                    let val = lhs.pow(&rhs);
                     Ok(Rc::new(RefCell::new(Var::from(val))))
                 }
-                //TODO: add BigNum implemntation
             }
             Inst::RustFnCall(id) => {
                 let sapi = ScopeApi::new(&mut self.builtin, &mut self.locals);
@@ -1009,10 +1010,65 @@ where
 #[cfg(test)]
 mod test {
     use super::Runtime;
-    use crate::{
-        module::FileSystem,
-        test::{examples, simple_expr},
-    };
+    use crate::module::FileSystem;
+    use crate::test::{examples, simple_expr};
+
+    #[test]
+    fn big_num() {
+        let source = examples::big_num();
+        let mut runtime = Runtime::<FileSystem>::new();
+        let output = runtime.execute(&source).unwrap();
+        let correct = vec![
+            "100000000000000000000000000000000000000000000000000000000000000000000000000000000.0000000",
+            "-100000000000000000000000000000000000000000000000000000000000000000000000000000000.0000000",
+            "123890000000000000000000000000000000000000000000000.0000000",
+            "100000000000000000000000000000000000000000000000000000000000000000000000000000000.0000000",
+            "100000000000000000000000000000123890000000000000000000000000000000000000000000000.0000000",
+            "99999999999999999999999999999876110000000000000000000000000000000000000000000000.0000000",
+            "12388999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999934746955320014754732897058.9074345",
+            "807167648720639188828359229440.0000000",
+            "10896054575064678400000000000000000000000000000000000000000000000.0000000",
+            "21165419727480083527706406934821265190244817716143783949252051618837042739828520392180133400816901895635787282018996790045223780668149951343635077152206874811089749552608051200.0000000",
+            "-0.7786047",
+        ]
+            .iter()
+            .map(|s| s.to_string())
+            .collect::<Vec<String>>();
+        assert_eq!(output, &correct);
+    }
+
+    #[test]
+    fn unique_type_hash() {
+        use crate::var::{Var, VarType};
+        let mut runtime = Runtime::<FileSystem>::new();
+
+        fn add_var<'f>(runtime: &mut Runtime<'f, FileSystem>, name: &'f str, tp: VarType) {
+            let mut var = Var::none();
+            var.type_ = tp;
+            runtime.locals.last_mut().unwrap().add_var(name, var);
+        }
+        add_var(&mut runtime, "i32", VarType::I32);
+        add_var(&mut runtime, "i64", VarType::I64);
+        add_var(&mut runtime, "seq", VarType::Sequence);
+        add_var(&mut runtime, "real", VarType::Real);
+        add_var(&mut runtime, "nil", VarType::None);
+
+        runtime.execute("hash(type(i32))").unwrap();
+        runtime.execute("hash(type(i64))").unwrap();
+        runtime.execute("hash(type(real))").unwrap();
+        runtime.execute("hash(type(seq))").unwrap();
+        runtime.execute("hash(type(nil))").unwrap();
+
+        let hvs = runtime.output.clone();
+        for (i, hvi) in hvs.iter().enumerate() {
+            for (j, hvj) in hvs.iter().enumerate() {
+                if i == j {
+                    continue;
+                }
+                assert_ne!(hvi, hvj);
+            }
+        }
+    }
 
     #[test]
     fn cur_operator() {

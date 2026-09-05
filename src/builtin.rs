@@ -13,11 +13,20 @@ pub mod math {
     macro_rules! declare_math_fn {
         ($name:ident $(, $arg:expr)?) => {
             pub fn $name(sapi: ScopeApi) -> RMFunRetType {
-                let x: f64 =
-                    sapi.get_current_var("x").unwrap().try_into().map_err(|t| {
-                        format!("expect argument of {}(x) to be a number but got {}", stringify!($name), t)
-                    })?;
-                Ok(Some(VarApi::from(x.$name($($arg)?))))
+                let x = sapi.get_current_var("x").unwrap();
+                if x.vtype() <= RMApiType::Real {
+                    let x: Real =
+                        x.try_into().map_err(|t| {
+                            format!("expect argument of {}(x) to be a number but got {}", stringify!($name), t)
+                        })?;
+                    Ok(Some(VarApi::from(x.$name($($arg)?))))
+                } else {
+                    let x: Real =
+                        x.try_into().map_err(|t| {
+                            format!("expect argument of {}(x) to be a number but got {}", stringify!($name), t)
+                        })?;
+                    Ok(Some(VarApi::from(x.$name($($arg)?))))
+                }
             }
         };
     }
@@ -76,6 +85,7 @@ pub mod env {
     declare_env_fn!(env_detail_depth, DETAIL_DEPTH, 1);
     declare_env_fn!(env_max_stack_depth, MAX_STACK_DEPTH, u32::MAX);
     declare_env_fn!(env_index_base, INDEX_BASE, 1);
+    declare_env_fn!(env_calc_precision_in_bin, CALC_PRECISION_IN_BIN, 800);
 }
 
 pub mod logic {
@@ -83,14 +93,33 @@ pub mod logic {
     macro_rules! declare_logic_fn {
         ($name:ident, x $logic:tt $value:literal) => {
             pub fn $name(sapi: ScopeApi) -> RMFunRetType {
-                let x: i64 = sapi.get_current_var("x").unwrap().try_into().map_err(|t| {
-                    format!(
-                        "expect argument of {}(x) to be a integer got {}",
-                        stringify!($name),
-                        t
-                    )
-                })?;
-                Ok(Some(VarApi::from((x $logic $value) as i32)))
+                let x = sapi.get_current_var("x").unwrap();
+                if x.vtype() <= RMApiType::I64 {
+                    let x: i64 = x.try_into().map_err(|t| {
+                        format!(
+                            "expect argument of {}(x) to be a integer got {}",
+                            stringify!($name),
+                            t
+                        )
+                    })?;
+                    Ok(Some(VarApi::from((x $logic $value) as i32)))
+                } else {
+                    let x: Real = x.try_into().map_err(|t| {
+                        format!(
+                            "expect argument of {}(x) to be a integer got {}",
+                            stringify!($name),
+                            t
+                        )
+                    })?;
+                    if !x.is_integer() {
+                        return Err(
+                        format!(
+                            "expect argument of {}(x) to be a integer got BigNum::Float",
+                            stringify!($name),
+                        ))
+                    }
+                    Ok(Some(VarApi::from((x.is_zero()) as i32)))
+                }
             }
         };
     }
@@ -98,13 +127,13 @@ pub mod logic {
     declare_logic_fn!(elsef, x != 0);
 
     pub fn sign(sapi: ScopeApi) -> RMFunRetType {
-        let x: f64 = sapi
+        let x: Real = sapi
             .get_current_var("x")
             .unwrap()
             .try_into()
             .map_err(|t| format!("expect argument of sign(x) to be a number but got {}", t))?;
         use std::cmp::Ordering;
-        let result = match x.total_cmp(&0.0) {
+        let result = match x.cmp(&Real::from(0)) {
             Ordering::Equal => 0,
             Ordering::Greater => 1,
             Ordering::Less => -1,
@@ -126,19 +155,22 @@ pub mod special {
 pub mod mtype {
     use super::*;
     pub fn int32(sapi: ScopeApi) -> RMFunRetType {
-        // TODO: change to BigNum when avaliable
-        let x: f64 = sapi
+        let x: Real = sapi
             .get_current_var("x")
             .unwrap()
             .try_into()
             .map_err(|t| format!("expect argument of int32(x) to be a number but got {}", t))?;
-        let trunc = x.trunc();
-        let xi32 = x as i32;
-        if trunc == f64::from(xi32) {
-            Ok(Some(VarApi::from(xi32)))
-        } else {
-            Err(format!("cannot convert {} to I32", x))
+        if !x.is_integer() {
+            return Err(format!("cannot convert {} to I32", x));
         }
+        let xi32: i32 = x
+            .try_into()
+            .map_err(|v| format!("cannot covert {} to I32", v))?;
+        Ok(Some(VarApi::from(xi32)))
+    }
+    pub fn typef(sapi: ScopeApi) -> RMFunRetType {
+        let x = sapi.get_current_var("x").unwrap();
+        Ok(Some(VarApi::from(x.vtype().to_string())))
     }
 }
 
@@ -225,6 +257,21 @@ pub mod control {
     }
 }
 
+pub mod utility {
+    use super::*;
+    use std::hash::{DefaultHasher, Hash, Hasher};
+    pub fn hash(sapi: ScopeApi) -> RMFunRetType {
+        let x = sapi.get_current_var("x").unwrap();
+        let mut hasher = DefaultHasher::new();
+        let bytes = x.as_bytes();
+        let vtype = x.vtype();
+        bytes.hash(&mut hasher);
+        vtype.hash(&mut hasher);
+        let hv = hasher.finish().cast_signed();
+        Ok(Some(VarApi::from(hv)))
+    }
+}
+
 #[unsafe(export_name = "export_builtin_module")]
 export! {
     pi = F64(consts::PI);
@@ -255,15 +302,18 @@ export! {
     __detail_depth__(x) = env::env_detail_depth;
     __max_stack_depth__(x) = env::env_max_stack_depth;
     __index_base__(x) = env::env_index_base;
+    __calc_precision_in_bin__(x) = env::env_calc_precision_in_bin;
     if(x) = logic::iff;
     else(x) = logic::elsef;
     sign(x) = logic::sign;
     $(x) = special::none;
     .(x) = special::one;
     int32(x) = mtype::int32;
+    type(x) = mtype::typef;
     Sequence(len) = sequence::new;
     len(seq) = sequence::len;
     abort(msg) = control::abort;
     assert_eq(lhs, rhs, msg) = control::assert_eq;
     assert_ne(lhs, rhs, msg) = control::assert_ne;
+    hash(x) = utility::hash;
 }

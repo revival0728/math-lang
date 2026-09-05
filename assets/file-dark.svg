@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <linearGradient id="darkGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8"/>
+      <stop offset="100%" stop-color="#f43f5e"/>
+    </linearGradient>
+  </defs>
+
+  <!-- 發光的無窮大幾何雙環 -->
+  <path d="M 38 64 C 20 40, 10 88, 38 88 C 58 88, 70 40, 90 40 C 118 40, 108 88, 90 88 C 70 88, 58 40, 38 40 Z" 
+        fill="none" 
+        stroke="url(#darkGrad)" 
+        stroke-width="7" 
+        stroke-linecap="round" 
+        stroke-linejoin="round"/>
+
+  <!-- 符號點綴 -->
+  <circle cx="38" cy="64" r="4" fill="#38bdf8"/>
+  <circle cx="90" cy="64" r="4" fill="#f43f5e"/>
+
+  <!-- 簡潔底部文字 -->
+  <text x="64" y="112" 
+        font-family="-apple-system, BlinkMacSystemFont, 'Fira Code', monospace" 
+        font-size="16" 
+        font-weight="800" 
+        fill="#f1f5f9" 
+        text-anchor="middle" 
+        letter-spacing="2">= expr</text>
+</svg>

@@ -1,0 +1,12 @@
+n1 = 100000000000000000000000000000000000000000000000000000000000000000000000000000000
+n2 = -n1
+n3 = 1.2389e50
+
+if(n1 + n2)(println(n1))
+if(n1 + n2)(println(n1 + n3))
+if(n1 + n2)(println(n1 - n3))
+if(n1 + n2)(println(n1 * n3))
+if(n1 + n2)(println(n1 / n3))
+if(n1 + n2)(println(n1 mod n3))
+if(n1 + n2)(println(n3 ^ 3.5))
+if(n1 + n2)(println(sin(n1)))
