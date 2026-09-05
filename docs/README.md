@@ -193,7 +193,7 @@ checkout [example](/examples/module.mls)
 | trunc(x) | `Rust` function, return integer part of the argument |
 | cbrt(x) | `Rust` function, return cube root of the argument |
 
-- using [`Real::builtin(x)`](../src/big_num/num.rs:57) for all Rust primitive types
+- using [`Real::builtin(x)`](../src/big_num/num.rs#L57) for all Rust primitive types
 
 ### Utility Functions
 
