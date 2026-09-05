@@ -6,6 +6,7 @@ use crate::rmapi::*;
 pub mod consts {
     pub const PI: f64 = std::f64::consts::PI;
     pub const E: f64 = std::f64::consts::E;
+    pub const INF: f64 = std::f64::INFINITY;
 }
 
 pub mod math {
@@ -278,11 +279,20 @@ pub mod utility {
         if !x.is_finite_number() {
             return Ok(Some(VarApi::from(x.to_string())));
         }
+        if x.is_zero() {
+            return Ok(Some(VarApi::from("0.0000000e+0")));
+        }
         let neg = x.is_neg();
         let p = x.abs().log10();
-        let p10 = p.floor();
+        let mut p10 = p.floor();
         let man = p - &p10;
-        let man = Real::from(10).pow(&man);
+        let mut man = Real::from(10).pow(&man);
+        let ten = Real::from(10);
+        let one = Real::from(1);
+        if man >= ten {
+            man /= &ten;
+            p10 += &one;
+        }
         let fmt = format!(
             "{}{}e{}{}",
             if neg { "-" } else { "" },
@@ -302,6 +312,7 @@ export! {
     false = I32(0);
     0 = I32(0);
     1 = I32(1);
+    inf = F64(consts::INF);
     sin(x) = math::sin;
     cos(x) = math::cos;
     tan(x) = math::tan;

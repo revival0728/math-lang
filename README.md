@@ -88,11 +88,12 @@ please checkout the [document](/docs/README.md)
 
 ## Development
 ### Main Changes
-- added builtin function `type(x)`
-- added builtin function `hash(x)`
-- implemented BigNum type
-- renamed BigNum type to Real type
-- deprecated f64 type
+- added builtin function `scifmt(x)`
+- improved builtin math function domain check
+- improved builtin math function result when passing +INF, -INF, NaN
+
+### Bug fixed
+- log(0), log2(0), ln(0) returned +INF
 
 ### TODO
 - [ ] improve error message
