@@ -270,6 +270,28 @@ pub mod utility {
         let hv = hasher.finish().cast_signed();
         Ok(Some(VarApi::from(hv)))
     }
+    pub fn scifmt(sapi: ScopeApi) -> RMFunRetType {
+        let x: Real =
+            sapi.get_current_var("x").unwrap().try_into().map_err(|t| {
+                format!("expect argument of scifmt(x) to be a number but got {}", t)
+            })?;
+        if !x.is_finite_number() {
+            return Ok(Some(VarApi::from(x.to_string())));
+        }
+        let neg = x.is_neg();
+        let p = x.abs().log10();
+        let p10 = p.floor();
+        let man = p - &p10;
+        let man = Real::from(10).pow(&man);
+        let fmt = format!(
+            "{}{}e{}{}",
+            if neg { "-" } else { "" },
+            man.to_float_str(7),
+            if !p10.is_neg() { "+" } else { "" },
+            p10.to_float_str(0),
+        );
+        Ok(Some(VarApi::from(fmt)))
+    }
 }
 
 #[unsafe(export_name = "export_builtin_module")]
@@ -316,4 +338,5 @@ export! {
     assert_eq(lhs, rhs, msg) = control::assert_eq;
     assert_ne(lhs, rhs, msg) = control::assert_ne;
     hash(x) = utility::hash;
+    scifmt(x) = utility::scifmt;
 }

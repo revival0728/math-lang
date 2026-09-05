@@ -781,6 +781,13 @@ impl BigNum {
     pub fn is_zero(&self) -> bool {
         self.is_integer() && self.cff.is_zero()
     }
+    pub fn is_neg(&self) -> bool {
+        if self.inf != 0 {
+            self.inf == -1
+        } else {
+            self.sgn == 1
+        }
+    }
     pub fn trunc_with_precision(&mut self, base2: u32) {
         let trunc = std::cmp::min(self.exp, base2);
         self.cff.bits >>= self.exp - trunc;
