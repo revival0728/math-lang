@@ -17,7 +17,7 @@ Everything in this language are math expressions
 
 ### Build binary from source
 
-make sure you have installed `rustc` and `cargo`
+make sure you have installed `git`, `rustc` and `cargo`
 
 using the [rustup](https://rustup.rs) will be helpful
 
@@ -27,6 +27,18 @@ cd math-lang
 cargo build --profile release
 ```
 
+### Install binary from source
+
+make sure you have installed `git`, `rustc` and `cargo`
+
+using the [rustup](https://rustup.rs) will be helpful
+
+```bash
+git clone https://github.com/revival0728/math-lang.git
+cd math-lang 
+cargo install --path .
+```
+
 ### Download from Release
 
 You can download `math-lang` binary from [Release](https://github.com/revival0728/math-lang/releases) page.
@@ -34,7 +46,9 @@ You can download `math-lang` binary from [Release](https://github.com/revival072
 2. run the binary
 
 ```bash
-./target/release/math-lang
+./target/release/math-lang    # build from source
+math-lang                     # install from source
+$(DOWNLOAD_FOLDER)/math-lang  # download from release
 ```
 
 ## Binary Usage
