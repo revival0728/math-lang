@@ -1,5 +1,17 @@
 # Math Lang
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./assets/file-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="./assets/file-light.svg">
+  <img alt="LANG ICON" src="./assets/file-dark.svg">
+</picture>
+
+
+![test & build](https://img.shields.io/github/actions/workflow/status/revival0728/math-lang/build-test-multiplatform.yml)
+![GitHub Release](https://img.shields.io/github/v/release/revival0728/math-lang)
+![GitHub commits since latest release (branch)](https://img.shields.io/github/commits-since/revival0728/math-lang/latest/dev)
+![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/revival0728/math-lang/total)
+
 Toy scripting language to calculate math
 
 Everything in this language are math expressions
@@ -89,5 +101,4 @@ please checkout the [document](/docs/README.md)
 - [ ] add custom type support (parsed as None but bytes has meanings)
 - [ ] fix cannot access parent scope with same function name (?)
 - [ ] flatten inst, flat Inst::Mul with new inst Inst::Jump(cond, dest)
-- [ ] Cargo install support
 - [ ] package manager
