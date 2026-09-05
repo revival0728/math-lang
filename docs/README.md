@@ -62,13 +62,16 @@ where `i64`, `i32` are Rust primitive types, `BigNum` is used only when precisio
 ### About Real
 - `Real` stands for real number
 - you can use `Real` as Rust primitive `f64` type in math-lang
-- `Real` has no value limit, but has precision limit (which is sufficient for math-lang)
+- `Real` has no value limit, but has precision limit to prevent perfomance issue
 - **WARN**: raw numbers of `Real` have accuracy guarantee, but scientific notations are NOT
 
 > `Real` in math-lang source code is **struct** `BigNum`...
 
 ### Value Limit
 There is NO value limit now, thanks to `Real`!
+
+### Precision Limit
+the `Real` type can stores at most 180 decimal binary bits, which means the precision in 10-base is about **54**
 
 ### About Sequence
 - just like array in other language

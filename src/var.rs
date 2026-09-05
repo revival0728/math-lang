@@ -234,7 +234,9 @@ macro_rules! impl_operation_for_var {
                     VarType::Real => {
                         let l: BigNum = self.into();
                         let r: BigNum = rhs.into();
-                        Var::from(l.$uncheck_fn(&r))
+                        let mut res = l.$uncheck_fn(&r);
+                        res.trunc_with_precision(180);
+                        Var::from(res)
                     }
                 }
             }
