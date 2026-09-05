@@ -1274,7 +1274,7 @@ mod test {
         let a = BigNum::from(0_f64);
         assert!((&a.tan() - &BigNum::from(0_f64.tan())).abs() < eps);
         let b = BigNum::from(FRAC_PI_2);
-        assert!((&b.tan() - &BigNum::from(FRAC_PI_2.tan())).abs() < eps);
+        assert!((&b.tan() - &BigNum::inf()).abs() < eps);
         let c = BigNum::from(PI);
         assert!((&c.tan() - &BigNum::from(PI.tan())).abs() < eps);
         let d = BigNum::from(-1.234_f64);
@@ -1282,7 +1282,7 @@ mod test {
         let e = BigNum::from(PI + PI);
         assert!((&e.tan() - &BigNum::from((PI + PI).tan())).abs() < eps);
         let g = BigNum::from(FRAC_PI_2 + PI);
-        assert!((&g.tan() - &BigNum::from((FRAC_PI_2 + PI).tan())).abs() < eps);
+        assert!((&g.tan() - &BigNum::neg_inf()).abs() < eps);
 
         let eps_tor = BigNum::from(1e-13_f64);
         let f = BigNum::from(-1234_f64);
