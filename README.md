@@ -64,12 +64,11 @@ please checkout the [document](/docs/README.md)
 ### Main Changes
 - added builtin function `type(x)`
 - added builtin function `hash(x)`
-- implemented BigNum
+- implemented BigNum type
+- renamed BigNum type to Real type
+- deprecated f64 type
 
 ### TODO
-- [ ] change Cargo.toml version
-- [ ] update lang doc (warn for scientific-notation inaccurate)
-
 - [ ] improve error message
 - [ ] fix tail call optimization to recursion
 - [ ] add function info expression

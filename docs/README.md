@@ -54,17 +54,21 @@ For usage exmaple, checkout [examples/cur-operator.mls](/examples/cur-operator.m
 types are automatically determined, depends on precision and size of value
 
 ```text
-Sequence | BigNum > f64 > i64 > i32
+Sequence | Real > i64 > i32
 ```
 
-where `f64`, `i64`, `i32` are Rust primitve types, `BigNum` is used only when precision or size of value is required
+where `i64`, `i32` are Rust primitive types, `BigNum` is used only when precision or size of value is required
 
-`BigNum` is not implemented yet
+### About Real
+- `Real` stands for real number
+- you can use `Real` as Rust primitive `f64` type in math-lang
+- `Real` has no value limit, but has precision limit (which is sufficient for math-lang)
+- **WARN**: raw numbers of `Real` have accuracy guarantee, but scientific notations are NOT
+
+> `Real` in math-lang source code is **struct** `BigNum`...
 
 ### Value Limit
-currently values are limited by Rust primitive type `f64`, will change after implementing `BigNum`
-
-which is in [-1.7976931348623157e+308, 1.7976931348623157e+308]
+There is NO value limit now, thanks to `Real`!
 
 ### About Sequence
 - just like array in other language
@@ -189,7 +193,7 @@ checkout [example](/examples/module.mls)
 | trunc(x) | `Rust` function, return integer part of the argument |
 | cbrt(x) | `Rust` function, return cube root of the argument |
 
-- using `f64::builtin(x)` for all Rust primitive types
+- using [`Real::builtin(x)`](../src/big_num/num.rs:57) for all Rust primitive types
 
 ### Utility Functions
 
