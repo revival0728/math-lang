@@ -6,6 +6,7 @@ use crate::rmapi::*;
 pub mod consts {
     pub const PI: f64 = std::f64::consts::PI;
     pub const E: f64 = std::f64::consts::E;
+    pub const INF: f64 = std::f64::INFINITY;
 }
 
 pub mod math {
@@ -270,6 +271,37 @@ pub mod utility {
         let hv = hasher.finish().cast_signed();
         Ok(Some(VarApi::from(hv)))
     }
+    pub fn scifmt(sapi: ScopeApi) -> RMFunRetType {
+        let x: Real =
+            sapi.get_current_var("x").unwrap().try_into().map_err(|t| {
+                format!("expect argument of scifmt(x) to be a number but got {}", t)
+            })?;
+        if !x.is_finite_number() {
+            return Ok(Some(VarApi::from(x.to_string())));
+        }
+        if x.is_zero() {
+            return Ok(Some(VarApi::from("0.0000000e+0")));
+        }
+        let neg = x.is_neg();
+        let p = x.abs().log10();
+        let mut p10 = p.floor();
+        let man = p - &p10;
+        let mut man = Real::from(10).pow(&man);
+        let ten = Real::from(10);
+        let one = Real::from(1);
+        if man >= ten {
+            man /= &ten;
+            p10 += &one;
+        }
+        let fmt = format!(
+            "{}{}e{}{}",
+            if neg { "-" } else { "" },
+            man.to_float_str(7),
+            if !p10.is_neg() { "+" } else { "" },
+            p10.to_float_str(0),
+        );
+        Ok(Some(VarApi::from(fmt)))
+    }
 }
 
 #[unsafe(export_name = "export_builtin_module")]
@@ -280,6 +312,7 @@ export! {
     false = I32(0);
     0 = I32(0);
     1 = I32(1);
+    inf = F64(consts::INF);
     sin(x) = math::sin;
     cos(x) = math::cos;
     tan(x) = math::tan;
@@ -316,4 +349,5 @@ export! {
     assert_eq(lhs, rhs, msg) = control::assert_eq;
     assert_ne(lhs, rhs, msg) = control::assert_ne;
     hash(x) = utility::hash;
+    scifmt(x) = utility::scifmt;
 }

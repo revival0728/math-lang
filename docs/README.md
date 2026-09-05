@@ -203,6 +203,7 @@ checkout [example](/examples/module.mls)
 | name | document |
 |------|----------|
 | hash(x) | return hash value of argument `x` as type I64, guarantee that hash value from `type(x)` will not collide |
+| scifmt(x) | return string literal of `x` in scientific notation |
 
 ## About Environment Variable (ENV)
 it is possible to read or get ENV by function `__[ENV_name]__()`, where `[ENV_name]` only contains lower case alphabets

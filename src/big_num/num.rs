@@ -68,12 +68,18 @@ impl BigNum {
         lg
     }
     pub fn trunc(&self) -> Self {
+        if !self.is_finite_number() {
+            return self.clone();
+        }
         let mut ret = self.clone();
         ret.cff.bits >>= ret.exp;
         ret.exp = 0;
         ret
     }
     pub fn fract(&self) -> Self {
+        if !self.is_finite_number() {
+            return Self::nan();
+        }
         let mut ret = BigNum::new();
         ret.sgn = self.sgn;
         ret.nan = self.nan;
@@ -87,6 +93,9 @@ impl BigNum {
         ret
     }
     pub fn ceil(&self) -> Self {
+        if !self.is_finite_number() {
+            return self.clone();
+        }
         if self.fract().cff.is_zero() {
             self.clone()
         } else {
@@ -94,6 +103,9 @@ impl BigNum {
         }
     }
     pub fn floor(&self) -> Self {
+        if !self.is_finite_number() {
+            return self.clone();
+        }
         if self.sgn == 0 || self.fract().cff.is_zero() {
             self.trunc()
         } else {
@@ -101,13 +113,16 @@ impl BigNum {
         }
     }
     pub fn round(&self) -> Self {
+        if !self.is_finite_number() {
+            return self.clone();
+        }
         let mut dec = self.fract();
         dec.trunc_with_precision(60);
         let dec = dec.to_f64_unchecked();
         self.trunc() + &BigNum::from(dec.round())
     }
     pub fn abs(&self) -> Self {
-        if !self.is_finite_number() {
+        if self.nan {
             return Self::nan();
         }
         let mut ret = self.clone();
@@ -116,8 +131,11 @@ impl BigNum {
         ret
     }
     pub fn sqrt(&self) -> Self {
-        if !self.is_finite_number() || self.sgn == 1 {
+        if self.nan || self.sgn == 1 || self.inf == -1 {
             return Self::nan();
+        }
+        if self.inf > 0 {
+            return self.clone();
         }
         let mut n = self.ilog2();
         let two_reci = Self::from(0.5);
@@ -128,8 +146,11 @@ impl BigNum {
         n
     }
     pub fn cbrt(&self) -> Self {
-        if !self.is_finite_number() || self.sgn == 1 {
+        if self.nan || self.sgn == 1 || self.inf == -1 {
             return Self::nan();
+        }
+        if self.inf > 0 {
+            return self.clone();
         }
         let two = BigNum::from(2);
         let three = BigNum::from(3);
@@ -143,8 +164,11 @@ impl BigNum {
         y
     }
     pub fn exp2(&self) -> Self {
+        if self.inf == -1 {
+            return Self::from(1);
+        }
         if !self.is_finite_number() {
-            return Self::nan();
+            return self.clone();
         }
         let int = {
             let mut int = BigNum::from(1);
@@ -174,8 +198,11 @@ impl BigNum {
         }
     }
     pub fn exp(&self) -> Self {
+        if self.inf == -1 {
+            return Self::from(1);
+        }
         if !self.is_finite_number() {
-            return Self::nan();
+            return self.clone();
         }
         let lg2e = BigNum::from(std::f64::consts::LOG2_E);
         (self * &lg2e).exp2()
@@ -200,7 +227,7 @@ impl BigNum {
         (m, exp)
     }
     pub fn ln(&self) -> Self {
-        if !self.is_finite_number() || self.sgn == 1 {
+        if !self.is_finite_number() || self.sgn == 1 || self.is_zero() {
             return Self::nan();
         }
         use std::f64::consts::LN_2;
@@ -215,7 +242,7 @@ impl BigNum {
         }
     }
     pub fn log2(&self) -> Self {
-        if !self.is_finite_number() || self.sgn == 1 {
+        if !self.is_finite_number() || self.sgn == 1 || self.is_zero() {
             return Self::nan();
         }
         let (m, exp) = self.log_sdn();
@@ -229,7 +256,7 @@ impl BigNum {
         }
     }
     pub fn log10(&self) -> Self {
-        if !self.is_finite_number() || self.sgn == 1 {
+        if !self.is_finite_number() || self.sgn == 1 || self.is_zero() {
             return Self::nan();
         }
         use std::f64::consts::LOG10_2;
@@ -248,8 +275,24 @@ impl BigNum {
         self.log10()
     }
     pub fn pow(&self, exp: &BigNum) -> Self {
-        if !self.is_finite_number() {
+        if self.nan {
             return Self::nan();
+        }
+        if self.inf == 1 {
+            return if exp.inf == -1 || exp.sgn == 1 {
+                Self::from(0)
+            } else {
+                Self::inf()
+            };
+        }
+        if self.inf == -1 {
+            return Self::nan();
+        }
+        if exp.inf == -1 {
+            return Self::from(1);
+        }
+        if !exp.is_finite_number() {
+            return self.clone();
         }
         (exp * &self.log2()).exp2()
     }
@@ -279,8 +322,17 @@ impl BigNum {
         if !self.is_finite_number() {
             return Self::nan();
         }
+        use std::f64::consts::FRAC_PI_2;
+        use std::f64::consts::PI;
+        const EPS: f64 = 1e-15;
         let theta = self.trig_sdn().to_f64_unchecked();
-        Self::from(theta.tan())
+        if (theta - FRAC_PI_2).abs() < EPS {
+            Self::inf()
+        } else if (theta - FRAC_PI_2 - PI).abs() < EPS {
+            Self::neg_inf()
+        } else {
+            Self::from(theta.tan())
+        }
     }
     pub fn asin(&self) -> Self {
         if !self.is_finite_number() {
@@ -781,6 +833,13 @@ impl BigNum {
     pub fn is_zero(&self) -> bool {
         self.is_integer() && self.cff.is_zero()
     }
+    pub fn is_neg(&self) -> bool {
+        if self.inf != 0 {
+            self.inf == -1
+        } else {
+            self.sgn == 1
+        }
+    }
     pub fn trunc_with_precision(&mut self, base2: u32) {
         let trunc = std::cmp::min(self.exp, base2);
         self.cff.bits >>= self.exp - trunc;
@@ -1215,7 +1274,7 @@ mod test {
         let a = BigNum::from(0_f64);
         assert!((&a.tan() - &BigNum::from(0_f64.tan())).abs() < eps);
         let b = BigNum::from(FRAC_PI_2);
-        assert!((&b.tan() - &BigNum::from(FRAC_PI_2.tan())).abs() < eps);
+        assert!((&b.tan() - &BigNum::inf()).abs() < eps);
         let c = BigNum::from(PI);
         assert!((&c.tan() - &BigNum::from(PI.tan())).abs() < eps);
         let d = BigNum::from(-1.234_f64);
@@ -1223,7 +1282,7 @@ mod test {
         let e = BigNum::from(PI + PI);
         assert!((&e.tan() - &BigNum::from((PI + PI).tan())).abs() < eps);
         let g = BigNum::from(FRAC_PI_2 + PI);
-        assert!((&g.tan() - &BigNum::from((FRAC_PI_2 + PI).tan())).abs() < eps);
+        assert!((&g.tan() - &BigNum::neg_inf()).abs() < eps);
 
         let eps_tor = BigNum::from(1e-13_f64);
         let f = BigNum::from(-1234_f64);
