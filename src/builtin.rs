@@ -85,6 +85,7 @@ pub mod env {
     declare_env_fn!(env_detail_depth, DETAIL_DEPTH, 1);
     declare_env_fn!(env_max_stack_depth, MAX_STACK_DEPTH, u32::MAX);
     declare_env_fn!(env_index_base, INDEX_BASE, 1);
+    declare_env_fn!(env_calc_precision_in_bin, CALC_PRECISION_IN_BIN, 800);
 }
 
 pub mod logic {
@@ -301,6 +302,7 @@ export! {
     __detail_depth__(x) = env::env_detail_depth;
     __max_stack_depth__(x) = env::env_max_stack_depth;
     __index_base__(x) = env::env_index_base;
+    __calc_precision_in_bin__(x) = env::env_calc_precision_in_bin;
     if(x) = logic::iff;
     else(x) = logic::elsef;
     sign(x) = logic::sign;

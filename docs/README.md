@@ -217,6 +217,7 @@ it is possible to read or get ENV by function `__[ENV_name]__()`, where `[ENV_na
 | DETAIL_DEPTH | the output level of detail information | repl=0, source=1 |[0, 1] |
 | MAX_STACK_DEPTH | the maximum stack depth of recrusive function | 512 |[0, inf] |
 | INDEX_BASE | the base of indexing | 0 | [0, 1] |
+| CALC_PRECISION_IN_BIN | the precision of binary digit while doing calculations | 180 | [0, 800] |
 
 - maximum stack size is not ENV, but can be configured by execution argument, by default is 64MB
 

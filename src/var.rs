@@ -1,5 +1,5 @@
 use crate::big_num::BigNum;
-use crate::env::PRECISION;
+use crate::env::{CALC_PRECISION_IN_BIN, PRECISION};
 use std::convert::{From, Into};
 use std::fmt::Display;
 use std::ops::{Add, Div, Mul, Neg, Rem, Sub};
@@ -235,7 +235,7 @@ macro_rules! impl_operation_for_var {
                         let l: BigNum = self.into();
                         let r: BigNum = rhs.into();
                         let mut res = l.$uncheck_fn(&r);
-                        res.trunc_with_precision(180);
+                        res.trunc_with_precision(unsafe { CALC_PRECISION_IN_BIN });
                         Var::from(res)
                     }
                 }
