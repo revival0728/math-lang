@@ -626,7 +626,54 @@ impl BigNum {
         } else {
             let pow2 = BigUint::pow2(self.exp);
             let (int, dec) = self.cff.div_rem(&pow2);
-            let dec = dec.div_decimal(&pow2, precision);
+            let dec = dec.div_decimal(&pow2, precision + 1);
+            let mut int = int.to_base10();
+            let mut dec = dec.to_base10();
+            let mut carry = if dec.pop().unwrap() >= 5_u8 {
+                1_u8
+            } else {
+                0_u8
+            };
+            for d in dec.iter_mut().rev() {
+                *d += carry;
+                if *d > 9 {
+                    *d = 0;
+                    carry = 1;
+                } else {
+                    carry = 0;
+                }
+            }
+            for d in int.iter_mut().rev() {
+                *d += carry;
+                if *d > 9 {
+                    *d = 0;
+                    carry = 1;
+                } else {
+                    carry = 0;
+                }
+            }
+            let int = {
+                let mut int_str = if carry == 0 {
+                    String::new()
+                } else {
+                    carry.to_string()
+                };
+                int_str.extend(
+                    int.iter()
+                        .fold(String::with_capacity(int.len()), |mut res, d| {
+                            res.extend(d.to_string().chars());
+                            res
+                        })
+                        .chars(),
+                );
+                int_str
+            };
+            let dec = dec
+                .iter()
+                .fold(String::with_capacity(dec.len()), |mut res, d| {
+                    res.extend(d.to_string().chars());
+                    res
+                });
             if precision == 0 {
                 format!("{}{}", if self.sgn == 1 { "-" } else { "" }, int)
             } else {
@@ -1252,8 +1299,8 @@ mod test {
         let c = BigNum::from(1.234e-3_f64);
         let pi = BigNum::from(std::f64::consts::PI);
         assert_eq!(a.to_float_str(5), "1.00000");
-        assert_eq!(b.to_float_str(5), "-1.23399");
-        assert_eq!(c.to_float_str(7), "0.0012339");
+        assert_eq!(b.to_float_str(5), "-1.23400");
+        assert_eq!(c.to_float_str(7), "0.0012340");
         assert_eq!(pi.to_float_str(15), "3.141592653589793");
     }
 

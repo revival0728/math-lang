@@ -1,5 +1,4 @@
 #![allow(unused)]
-use crate::big_num::BigNum;
 use crate::env::*;
 use crate::export;
 use crate::rmapi::*;
@@ -15,14 +14,14 @@ pub mod math {
         ($name:ident $(, $arg:expr)?) => {
             pub fn $name(sapi: ScopeApi) -> RMFunRetType {
                 let x = sapi.get_current_var("x").unwrap();
-                if x.vtype() <= RMApiType::F64 {
-                    let x: f64 =
+                if x.vtype() <= RMApiType::Real {
+                    let x: Real =
                         x.try_into().map_err(|t| {
                             format!("expect argument of {}(x) to be a number but got {}", stringify!($name), t)
                         })?;
                     Ok(Some(VarApi::from(x.$name($($arg)?))))
                 } else {
-                    let x: BigNum =
+                    let x: Real =
                         x.try_into().map_err(|t| {
                             format!("expect argument of {}(x) to be a number but got {}", stringify!($name), t)
                         })?;
@@ -104,7 +103,7 @@ pub mod logic {
                     })?;
                     Ok(Some(VarApi::from((x $logic $value) as i32)))
                 } else {
-                    let x: BigNum = x.try_into().map_err(|t| {
+                    let x: Real = x.try_into().map_err(|t| {
                         format!(
                             "expect argument of {}(x) to be a integer got {}",
                             stringify!($name),
@@ -127,13 +126,13 @@ pub mod logic {
     declare_logic_fn!(elsef, x != 0);
 
     pub fn sign(sapi: ScopeApi) -> RMFunRetType {
-        let x: f64 = sapi
+        let x: Real = sapi
             .get_current_var("x")
             .unwrap()
             .try_into()
             .map_err(|t| format!("expect argument of sign(x) to be a number but got {}", t))?;
         use std::cmp::Ordering;
-        let result = match x.total_cmp(&0.0) {
+        let result = match x.cmp(&Real::from(0)) {
             Ordering::Equal => 0,
             Ordering::Greater => 1,
             Ordering::Less => -1,
@@ -155,7 +154,7 @@ pub mod special {
 pub mod mtype {
     use super::*;
     pub fn int32(sapi: ScopeApi) -> RMFunRetType {
-        let x: BigNum = sapi
+        let x: Real = sapi
             .get_current_var("x")
             .unwrap()
             .try_into()

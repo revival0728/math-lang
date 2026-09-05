@@ -282,14 +282,14 @@ impl BigUint {
     }
 }
 
-impl Display for BigUint {
-    /// the double dabble algorithm
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl BigUint {
+    /// to base10 as big endian
+    pub fn to_base10(&self) -> Vec<u8> {
         let mut buf = self.bits.clone();
         let bit_len = buf.bit_len();
         if bit_len <= 3 {
             let bytes = self.bits.to_le_bytes();
-            return write!(f, "{}", if bytes.is_empty() { 0 } else { bytes[0] });
+            return vec![if bytes.is_empty() { 0 } else { bytes[0] }];
         }
         buf <<= 3;
         let mut dlen = 0_usize;
@@ -324,18 +324,36 @@ impl Display for BigUint {
         }
         buf >>= bit_len;
         let bytes = buf.to_le_bytes();
+        let capcacity = bytes.len() << 1;
         const MASK_4: u8 = (1 << 4) - 1;
-        let res: String = bytes.into_iter().rfold(String::new(), |mut res, bytes| {
-            let f = bytes >> 4;
-            let s = bytes & MASK_4;
-            if f != 0 || !res.is_empty() {
-                res.extend(f.to_string().chars());
-            }
-            if s != 0 || !res.is_empty() {
-                res.extend(s.to_string().chars());
-            }
-            res
-        });
+        let res: Vec<u8> =
+            bytes
+                .into_iter()
+                .rfold(Vec::with_capacity(capcacity), |mut res, bytes| {
+                    let f = bytes >> 4;
+                    let s = bytes & MASK_4;
+                    if f != 0 || !res.is_empty() {
+                        res.push(f);
+                    }
+                    if s != 0 || !res.is_empty() {
+                        res.push(s);
+                    }
+                    res
+                });
+        res
+    }
+}
+
+impl Display for BigUint {
+    /// the double dabble algorithm
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let b10 = self.to_base10();
+        let res = b10
+            .iter()
+            .fold(String::with_capacity(b10.len()), |mut res, n| {
+                res.extend(n.to_string().chars());
+                res
+            });
         write!(f, "{}", res)
     }
 }

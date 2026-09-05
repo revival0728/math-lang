@@ -1,8 +1,7 @@
-use crate::big_num::BigNum;
 use crate::comiler::{Compiler, Expr, Inst};
 use crate::error::{GlobalError, RuntimeError};
 use crate::module;
-use crate::rmapi::{ModMember, Number, RMExport, RMFunPtr, ScopeApi};
+use crate::rmapi::{ModMember, Number, RMExport, RMFunPtr, Real, ScopeApi};
 use crate::var::{Var, VarType};
 use crate::{builtin, env::*};
 use std::cell::RefCell;
@@ -298,8 +297,8 @@ where
                     Number::I16(num) => mod_scope.add_var(name, Var::from(num as i32)),
                     Number::I32(num) => mod_scope.add_var(name, Var::from(num)),
                     Number::I64(num) => mod_scope.add_var(name, Var::from(num)),
-                    Number::F32(num) => mod_scope.add_var(name, Var::from(num as f64)),
-                    Number::F64(num) => mod_scope.add_var(name, Var::from(num)),
+                    Number::F32(num) => mod_scope.add_var(name, Var::from(Real::from(num))),
+                    Number::F64(num) => mod_scope.add_var(name, Var::from(Real::from(num))),
                 },
                 ModMember::Fun((name, paras, rfn)) => {
                     let mut fun = Fun::new(paras.clone());
@@ -330,8 +329,8 @@ where
                     Number::I16(num) => self.builtin.add_var(name, Var::from(num as i32)),
                     Number::I32(num) => self.builtin.add_var(name, Var::from(num)),
                     Number::I64(num) => self.builtin.add_var(name, Var::from(num)),
-                    Number::F32(num) => self.builtin.add_var(name, Var::from(num as f64)),
-                    Number::F64(num) => self.builtin.add_var(name, Var::from(num)),
+                    Number::F32(num) => self.builtin.add_var(name, Var::from(Real::from(num))),
+                    Number::F64(num) => self.builtin.add_var(name, Var::from(Real::from(num))),
                 },
                 ModMember::Fun((name, paras, rfn)) => {
                     let mut fun = Fun::new(paras.clone());
@@ -645,7 +644,7 @@ where
                 check_is_num!(rhs);
                 let (scope_index, scope_id) = lhs.borrow().get_scope();
                 let (start, end) = lhs.borrow().get_boundary();
-                if rhs.borrow().type_ >= VarType::F64 {
+                if rhs.borrow().type_ >= VarType::Real {
                     return Err(RuntimeError {
                         line,
                         msg: format!("only integers can be used for indexing"),
@@ -833,14 +832,9 @@ where
                         *Rc::get_mut(&mut lhs).unwrap() = &one / &lhs;
                     }
                     Ok(Rc::new(RefCell::new(ret)))
-                } else if lhs_type == VarType::F64 && rhs_type == VarType::F64 {
-                    let lhs: f64 = (&*lhs.borrow()).into();
-                    let rhs: f64 = (&*rhs.borrow()).into();
-                    let val = lhs.powf(rhs);
-                    Ok(Rc::new(RefCell::new(Var::from(val))))
                 } else {
-                    let lhs: BigNum = (&*lhs.borrow()).into();
-                    let rhs: BigNum = (&*rhs.borrow()).into();
+                    let lhs: Real = (&*lhs.borrow()).into();
+                    let rhs: Real = (&*rhs.borrow()).into();
                     let val = lhs.pow(&rhs);
                     Ok(Rc::new(RefCell::new(Var::from(val))))
                 }
@@ -1027,15 +1021,15 @@ mod test {
         let correct = vec![
             "100000000000000000000000000000000000000000000000000000000000000000000000000000000.0000000",
             "-100000000000000000000000000000000000000000000000000000000000000000000000000000000.0000000",
-            "123889999999999999999999999999999999999999999999999.9999999",
+            "123890000000000000000000000000000000000000000000000.0000000",
             "100000000000000000000000000000000000000000000000000000000000000000000000000000000.0000000",
-            "100000000000000000000000000000123889999999999999999999999999999999999999999999999.9999999",
+            "100000000000000000000000000000123890000000000000000000000000000000000000000000000.0000000",
             "99999999999999999999999999999876110000000000000000000000000000000000000000000000.0000000",
             "12388999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999934746955320014754732897058.9074345",
             "807167648720639188828359229440.0000000",
             "10896054575064678400000000000000000000000000000000000000000000000.0000000",
             "21165419727480083527706406934821265190244817716143783949252051618837042739828520392180133400816901895635787282018996790045223780668149951343635077152206874811089749552608051200.0000000",
-            "-0.7786046",
+            "-0.7786047",
         ]
             .iter()
             .map(|s| s.to_string())
@@ -1055,17 +1049,15 @@ mod test {
         }
         add_var(&mut runtime, "i32", VarType::I32);
         add_var(&mut runtime, "i64", VarType::I64);
-        add_var(&mut runtime, "f64", VarType::F64);
         add_var(&mut runtime, "seq", VarType::Sequence);
-        add_var(&mut runtime, "big", VarType::BigNum);
+        add_var(&mut runtime, "real", VarType::Real);
         add_var(&mut runtime, "nil", VarType::None);
 
         runtime.execute("hash(type(i32))").unwrap();
         runtime.execute("hash(type(i64))").unwrap();
-        runtime.execute("hash(type(f64))").unwrap();
+        runtime.execute("hash(type(real))").unwrap();
         runtime.execute("hash(type(seq))").unwrap();
         runtime.execute("hash(type(nil))").unwrap();
-        runtime.execute("hash(type(big))").unwrap();
 
         let hvs = runtime.output.clone();
         for (i, hvi) in hvs.iter().enumerate() {

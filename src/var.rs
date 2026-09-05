@@ -12,8 +12,7 @@ pub enum VarType {
     None,
     I32,
     I64,
-    F64,
-    BigNum,
+    Real,
     Sequence,
 }
 
@@ -37,8 +36,7 @@ impl PartialEq for Var {
             VarType::None => self.data == other.data,
             VarType::I32 => primitive_eq!(i32),
             VarType::I64 => primitive_eq!(i64),
-            VarType::F64 => primitive_eq!(f64),
-            VarType::BigNum => {
+            VarType::Real => {
                 BigNum::from_le_bytes(&self.data) == BigNum::from_le_bytes(&other.data)
             }
             VarType::Sequence => self.data == other.data,
@@ -55,8 +53,7 @@ impl Display for VarType {
                 Self::None => "None",
                 Self::I32 => "I32",
                 Self::I64 => "I64",
-                Self::F64 => "F64",
-                Self::BigNum => "BigNum",
+                Self::Real => "Real",
                 Self::Sequence => "Sequence",
             }
         )
@@ -90,22 +87,9 @@ impl<'input> Var {
         try_parse!(i32, I32, 4);
         try_parse!(i64, I64, 8);
         if let Ok(parsed) = BigNum::try_from(value) {
-            const MAX_EXACT: i64 = (1 << f64::MANTISSA_DIGITS) - 1;
-            const MIN_EXACT: i64 = -MAX_EXACT;
-            let max_exact = BigNum::from(MAX_EXACT);
-            let min_exact = BigNum::from(MIN_EXACT);
-            if min_exact <= parsed && parsed <= max_exact {
-                let f = parsed.to_f64_unchecked();
-                let bytes = f.to_le_bytes();
-                let data = Vec::from(bytes);
-                return Some(Self {
-                    type_: VarType::F64,
-                    data,
-                });
-            }
             let bytes = parsed.to_le_bytes();
             return Some(Self {
-                type_: VarType::BigNum,
+                type_: VarType::Real,
                 data: bytes,
             });
         }
@@ -133,8 +117,7 @@ macro_rules! impl_from_for_var {
 }
 impl_from_for_var!(i32, I32);
 impl_from_for_var!(i64, I64);
-impl_from_for_var!(f64, F64);
-impl_from_for_var!(BigNum, BigNum);
+impl_from_for_var!(BigNum, Real);
 
 impl Into<i32> for &Var {
     fn into(self) -> i32 {
@@ -157,34 +140,13 @@ impl Into<i64> for &Var {
     }
 }
 
-impl Into<f64> for &Var {
-    fn into(self) -> f64 {
-        match self.type_ {
-            VarType::None => panic!("runtime internal error!"),
-            VarType::I32 => i32::from_le_bytes(self.data[0..4].try_into().unwrap()).into(),
-            VarType::I64 => {
-                let int = i64::from_le_bytes(self.data[0..8].try_into().unwrap());
-                const MAX_EXACT: i64 = (1 << f64::MANTISSA_DIGITS) - 1;
-                const MIN_EXACT: i64 = -MAX_EXACT;
-                if int > MAX_EXACT || int < MIN_EXACT {
-                    panic!("runtime internal error!");
-                }
-                int as f64
-            }
-            VarType::F64 => f64::from_le_bytes(self.data[0..8].try_into().unwrap()).into(),
-            VarType::BigNum | VarType::Sequence => panic!("runtime internal error!"),
-        }
-    }
-}
-
 impl Into<BigNum> for &Var {
     fn into(self) -> BigNum {
         match self.type_ {
             VarType::None => panic!("runtime internal error!"),
             VarType::I32 => BigNum::from(i32::from_le_bytes(self.data[0..4].try_into().unwrap())),
             VarType::I64 => BigNum::from(i64::from_le_bytes(self.data[0..8].try_into().unwrap())),
-            VarType::F64 => BigNum::from(f64::from_le_bytes(self.data[0..8].try_into().unwrap())),
-            VarType::BigNum => BigNum::from_le_bytes(&self.data),
+            VarType::Real => BigNum::from_le_bytes(&self.data),
             VarType::Sequence => panic!("runtime internal error!"),
         }
     }
@@ -211,7 +173,7 @@ impl Var {
         match self.type_ {
             VarType::None => panic!("runtime internal error!"),
             VarType::Sequence => false,
-            VarType::I32 | VarType::I64 | VarType::F64 | VarType::BigNum => true,
+            VarType::I32 | VarType::I64 | VarType::Real => true,
         }
     }
     pub fn get_scope(&self) -> (usize, usize) {
@@ -244,22 +206,20 @@ macro_rules! impl_operation_for_var {
         impl $oper<&Var> for &Var {
             type Output = Var;
             fn $fname(self, rhs: &Var) -> Self::Output {
-                macro_rules! impl_integer {
-                    ($ltype:ident, $utype:ident) => {{
-                        let l: $ltype = self.into();
-                        let r: $ltype = rhs.into();
+                match std::cmp::max(VarType::$min_type, std::cmp::max(self.type_, rhs.type_)) {
+                    VarType::None | VarType::Sequence => panic!("runtime internal error!"),
+                    VarType::I32 => {
+                        let l: i32 = self.into();
+                        let r: i32 = rhs.into();
                         if let Some(v) = l.$checked_fn(r) {
                             Var::from(v)
                         } else {
-                            let l: $utype = self.into();
-                            let r: $utype = rhs.into();
+                            let l: i64 = self.into();
+                            let r: i64 = rhs.into();
                             Var::from(l.$uncheck_fn(r))
                         }
-                    }};
-                }
-                match std::cmp::max(VarType::$min_type, std::cmp::max(self.type_, rhs.type_)) {
-                    VarType::None | VarType::Sequence => panic!("runtime internal error!"),
-                    VarType::I32 => impl_integer!(i32, i64),
+                        
+                    },
                     VarType::I64 => {
                         let l: i64 = self.into();
                         let r: i64 = rhs.into();
@@ -271,12 +231,7 @@ macro_rules! impl_operation_for_var {
                             Var::from(l.$uncheck_fn(&r))
                         }
                     },
-                    VarType::F64 => {
-                        let l: f64 = self.into();
-                        let r: f64 = rhs.into();
-                        Var::from(l.$uncheck_fn(r))
-                    }
-                    VarType::BigNum => {
+                    VarType::Real => {
                         let l: BigNum = self.into();
                         let r: BigNum = rhs.into();
                         Var::from(l.$uncheck_fn(&r))
@@ -289,36 +244,34 @@ macro_rules! impl_operation_for_var {
 impl_operation_for_var!(Add, add, checked_add, add, None);
 impl_operation_for_var!(Sub, sub, checked_sub, sub, None);
 impl_operation_for_var!(Mul, mul, checked_mul, mul, None);
-impl_operation_for_var!(Div, div, checked_div, div, F64);
+impl_operation_for_var!(Div, div, checked_div, div, Real);
 impl_operation_for_var!(Rem, rem, checked_rem_euclid, rem_euclid, I64); // start from I64 to handle rhs == 0
 
 // TODO: optimized implementation
 impl Neg for &Var {
     type Output = Var;
     fn neg(self) -> Self::Output {
-        macro_rules! impl_for_integer {
-            ($rust_type:ident, $utype:ident) => {{
-                let v: $rust_type = self.into();
+        match self.type_ {
+            VarType::None => panic!("runtime internal error!"),
+            VarType::I32 => {
+                let v: i32 = self.into();
                 if let Some(v) = v.checked_neg() {
                     Var::from(v)
                 } else {
-                    let v: $utype = self.into();
+                    let v: i64 = self.into();
                     Var::from(-v)
                 }
-            }};
-        }
-        macro_rules! impl_for_float {
-            ($rust_type:ident) => {{
-                let v: $rust_type = self.into();
-                Var::from(-v)
-            }};
-        }
-        match self.type_ {
-            VarType::None => panic!("runtime internal error!"),
-            VarType::I32 => impl_for_integer!(i32, i64),
-            VarType::I64 => impl_for_integer!(i64, f64),
-            VarType::F64 => impl_for_float!(f64),
-            VarType::BigNum => {
+            }
+            VarType::I64 => {
+                let v: i64 = self.into();
+                if let Some(v) = v.checked_neg() {
+                    Var::from(v)
+                } else {
+                    let v: BigNum = self.into();
+                    Var::from(-&v)
+                }
+            }
+            VarType::Real => {
                 let v: BigNum = self.into();
                 Var::from(-&v)
             }
@@ -353,15 +306,7 @@ impl Display for Var {
                 let v: i64 = self.into();
                 write!(f, "{}", v)
             }
-            VarType::F64 => {
-                let v: f64 = self.into();
-                // SAFE: no multiple threads
-                unsafe {
-                    let p = PRECISION as usize;
-                    write!(f, "{:.p$}", v)
-                }
-            }
-            VarType::BigNum => {
+            VarType::Real => {
                 let v: BigNum = self.into();
                 // SAFE: no multiple threads
                 unsafe {

@@ -19,9 +19,9 @@ impl Decimal {
     }
 }
 
-impl Display for Decimal {
-    // TODO: Fix leading 0 error
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl Decimal {
+    /// to base10 as big endian
+    pub fn to_base10(&self) -> Vec<u8> {
         const TLOG2: f32 = 0.30103;
         let mut deci = BigUint::from(self.bits.clone());
         let base2 = {
@@ -40,18 +40,32 @@ impl Display for Decimal {
             exp >>= 1;
         }
         deci /= &base2;
-        let mut res = deci.to_string();
+        let mut res = deci.to_base10();
         if res.len() < digit_cnt {
-            let mut leading = "0".repeat(digit_cnt - res.len());
-            leading.push_str(&res);
+            let mut leading = vec![0_u8; digit_cnt - res.len()];
+            leading.extend(res.into_iter());
             res = leading;
         }
         let prec_usize = self.prec as usize;
         if res.len() > prec_usize {
             res.truncate(prec_usize);
         } else {
-            res.push_str(&"0".repeat(prec_usize - res.len()));
+            res.extend(vec![0_u8; prec_usize - res.len()].into_iter());
         }
+        res
+    }
+}
+
+impl Display for Decimal {
+    // TODO: Fix leading 0 error
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let b10 = self.to_base10();
+        let res = b10
+            .iter()
+            .fold(String::with_capacity(b10.len()), |mut res, n| {
+                res.extend(n.to_string().chars());
+                res
+            });
         write!(f, "{}", res)
     }
 }

@@ -68,7 +68,7 @@ please checkout the [document](/docs/README.md)
 
 ### TODO
 - [ ] change Cargo.toml version
-- [ ] update lang doc
+- [ ] update lang doc (warn for scientific-notation inaccurate)
 
 - [ ] improve error message
 - [ ] fix tail call optimization to recursion
